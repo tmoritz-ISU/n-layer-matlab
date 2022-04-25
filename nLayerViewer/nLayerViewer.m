@@ -5,18 +5,47 @@ function [varargout] = nLayerViewer(er, thk, NL, f, options)
 % allowing for a quick visual analysis of a material structure.
 %
 % Example Usage:
+%   figure;
 %   nlayerViewer(er, thk, NL, f);
 %   nlayerViewer(er, thk, NL1, f1, NL2, f2, ...);
 %   handles = nlayerViewer(er, thk, NL1, f1, NL2, f2, ...);
-%   handles = nlayerViewer(er, thk, NL1, f1, ..., legend=["1", ...]);
+%   handles = nlayerViewer(er, thk, NL1, f1, ..., Legend=["1", ...]);
 %
-% nLayerViewer Properties:
-%   MainFigDim ([100, 100, 1000, 600]) - Main figure dimension
-%       (pixels). The array elements are [left, bottom, width, height].
-%   PlotPanelSize (0.6) - Relative size of the plot panel to the main 
-%       figure window.
+% Inputs:
+%   er - Vector of default complex permittivities for each layer. These are
+%       default values displayed for each layer.
+%   thk - Vector of default layer thicknesses. Must have the same lenth as
+%       er. Last value should be inf for infinite half-space.
+%   NL - The nLayerForward solver object to use. This value is repeating
+%       along with f.
+%   f - Vector of frequencies. This value is repeating along with NL.
+%
+% Outputs:
+%   handles - Optional output to return the handles containing data that is
+%       stored within the UI figure.
+%
+% Named Arguments:
+%   ShowLegend (true) - If true, legend will be enabled.
 %   Legend - Array of strings that can be displayed along with the
-%       various plots of different NLayer solvers.
+%       various plots of different NLayer solvers. If not specified,
+%       default names will be used.
+%   ErBounds ([1, 10]) - Bounds of the dielectric constant (er). The
+%       size of the variable is dependent on the number of layers
+%       defined.
+%   ErpBounds [0.01, 10]) - Bounds of the dielectric loss (erp). The size
+%       of the variable is dependent on the number of layers defined.
+%   ThkBounds [0.1, 100]) - Bounds of the thickness (thk). The size of the
+%       variable is dependent on the number of layers defined.
+%   GamInterp (10) - The number of points the calculated reflection
+%       coefficients is interpolated to.
+%   PlotLineWidth (1.5) - The width of the plotted lines.
+%   PlotDotWidth (1.5) - The width of the plotted dots.
+%   FigureHandle (optional) - Handle of a figure to use. If not specified,
+%       will use current active figure or create a new figure.
+%   MainFigDim ([100, 100, 1000, 600]) - Main figure dimensions (pixels).
+%       The array elements are [left, bottom, width, height].
+%   PlotPanelSize (0.6) - Relative size of the plot panel to the main
+%       figure window.
 %   SliderXPos (0.15) - Position of sliders on the X-axis relative to
 %       the size of the parent panel.
 %   SliderYPos (0.15) - Position of sliders on the Y-axis relative to
@@ -24,153 +53,193 @@ function [varargout] = nLayerViewer(er, thk, NL, f, options)
 %   SliderLength (0.6) - Length of the  sliders relative to the size of
 %       the parent panel.
 %   SliderWidth (0.12) - Width of the sliders relative to the size of
-%       the parent panel   
-%   ErBounds ([1, 10]) - Bounds of the dielectric constant (er). The 
-%       size of the variable is dependent on the number of layers
-%       defined.
-%   ErpBounds [-2, 1]) - Bounds of the dielectric loss (erp). The value
-%       is defined as the integer power to 10. The size of the variable
-%       is dependent on the number of layers defined.
-%   ThkBounds [-1, 2]) - Bounds of the thickness (thk). The value
-%       is defined as the integer power to 10. The size of the variable
-%       is dependent on the number of layers defined.
-%   GamInterp (10) - The number of points the calculated reflection
-%       coefficients is interpolated to.
-%   PlotLineWidth (1.5) - The width of the plotted lines.
+%       the parent panel.
 %
-% Inputs:
-%   er - Complex dielectric constant. Consists of the real part (er) which
-%       must be greater than 1 and the imaginary part (erp) which is always
-%       negative.
-%   thk - Thickness of a material structure (mm).
-%   NL - NLayer solver object. Defined using nLayerRectangular. Can be
-%       defined multiple times to compute multiple solvers at the time.
-%   f - Frequency vector.
-%   options - Optional input to change certain parameters and variables
-%       within the function.
-%
-% Outputs:
-%   handles - Optional output to return the handles containing data that is
-%       stored within the UI figure.
-%
-% Author: Si Yuan Sim
-    
+% Author: Si Yuan Sim + Matt Dvorsky
+
 arguments
-    er
-    thk
+    er  (1, :);
+    thk (1, :) {mustBeNonempty};
 end
 
 arguments (Repeating)
-    NL  (1,1)
-    f   (:,1)
+    NL (1, 1) nLayerForward;
+    f  (:, 1) {mustBeNonempty};
 end
 
 arguments
-    options.MainFigDim      (1,4) {mustBeNumeric} = [100, 100, 1000, 600] 
-    options.Legend
-    options.PlotPanelSize   (1,1) {mustBeNumeric} = 0.6
-    options.PanelFontSize   (1,1) {mustBeNumeric} = 10;
+    % Figure options
+    options.FigureHandle    (1, 1);
+    options.MainFigDim      (1, 4) {mustBeReal} = [100, 100, 1000, 600];
+    options.ShowLegend      (1, 1) {mustBeNumericOrLogical} = true;
+    options.Legend          (:, 1) {mustBeText};
+    options.PlotPanelSize   (1, 1) {mustBeReal} = 0.6;
+    options.PanelFontSize   (1, 1) {mustBeReal} = 10;
+    options.FigureColor = [0.94, 0.94, 0.94];
+    
+    % Specific Axis Sizes
+    options.PlotAxisPosition   (1, 4) {mustBeReal} = [0.1, 0.03, 0.85, 0.9];
+    options.StructureAxisSize  (1, 1) {mustBeReal};
     
     % Slider parameters
-    options.SliderXPos      (1,1) {mustBeNumeric} = 0.15
-    options.SliderYPos      (1,1) {mustBeNumeric} = 0.15
-    options.SliderLength    (1,1) {mustBeNumeric} = 0.6
-    options.SliderWidth     (1,1) {mustBeNumeric} = 0.12
+    options.SliderXPos      (1, 1) {mustBeReal} = 0.15;
+    options.SliderYPos      (1, 1) {mustBeReal} = 0.15;
+    options.SliderLength    (1, 1) {mustBeReal} = 0.6;
+    options.SliderWidth     (1, 1) {mustBeReal} = 0.12;
     
     % Electrical property bounds
-    options.ErBounds        (:,2) {mustBeNumeric} = [1, 10]
-    options.ErpBounds       (:,2) {mustBeNumeric} = [-2, 1]
-    options.ThkBounds       (:,2) {mustBeNumeric} = [-1, 2]
+    options.ErBounds        (:, 2) {mustBePositive, mustBeFinite} = [1, 10];
+    options.ErpBounds       (:, 2) {mustBePositive, mustBeFinite} = [0.01, 10];
+    options.ThkBounds       (:, 2) {mustBePositive, mustBeFinite} = [0.1, 100];
     
     % NLayer settings
-    options.GamInterp       (1,1) {mustBeNumeric} = 10
+    options.GamInterp       (1, 1) {mustBeInteger, mustBePositive} = 10;
     
     % Plot settings
-    options.PlotLineWidth   (1,1) {mustBeNumeric} = 1.5
+    options.PlotLineWidth   (1, 1) {mustBeReal} = 1.5;
+    options.PlotDotWidth    (1, 1) {mustBeReal} = 1.5;
+end
+
+%% Check Inputs
+if ~isfield(options, "StructureAxisSize")
+    options.StructureAxisSize = 0.1 + 0.1*length(thk);
 end
 
 %% Create main figure and panels
-fig = figure('Name', 'nLayer Viewer', ...
-    'Position', options.MainFigDim);
+if isfield(options, "FigureHandle")
+    fig = options.FigureHandle;
+else
+    fig = gcf;
+end
+clf(fig);
+fig.Position = options.MainFigDim;
+fig.ToolBar = "none";
 
-plotPanel = uipanel(fig, 'Position', [0, 0, options.PlotPanelSize, 1]);
-sliderPanel = uipanel(fig, 'Position', [options.PlotPanelSize, 0, 1-options.PlotPanelSize, 1]);
+plotPanel = uipanel(fig, BackgroundColor=options.FigureColor, ...
+    Position=[0, 0, options.PlotPanelSize, 1]);
+sliderPanel = uipanel(fig, BackgroundColor=options.FigureColor, ...
+    Position=[options.PlotPanelSize, 0, 1 - options.PlotPanelSize, 1]);
 
-erPanel = uipanel(sliderPanel, 'Position', [0, 0.667, 1, 0.333], 'FontSize', options.PanelFontSize , 'Tag', 'er');
-erPanel.Title = "Dielectric Constant (er)";
+erPanel = uipanel(sliderPanel, Position=[0, 2/3, 1, 1/3], Tag="er", ...
+    FontSize=options.PanelFontSize, Title="Dielectric Constant (er)");
 
-erpPanel = uipanel(sliderPanel, 'Position', [0, 0.333, 1, 0.333], 'FontSize', options.PanelFontSize , 'Tag', 'erp');
-erpPanel.Title = "Dielectric Loss (erp)";
+erpPanel = uipanel(sliderPanel, Position=[0, 1/3, 1, 1/3], Tag="erp", ...
+    FontSize=options.PanelFontSize, Title="Dielectric Loss (erp)");
 
-thkPanel = uipanel(sliderPanel, 'Position', [0, 0, 1, 0.333], 'FontSize', options.PanelFontSize , 'Tag', 'thk');
-thkPanel.Title = "Thickness (mm)";
+thkPanel = uipanel(sliderPanel, Position=[0, 0, 1, 1/3], Tag="thk", ...
+    FontSize=options.PanelFontSize, Title="Thickness (mm)");
+
+handles.plotPanel = plotPanel;
+
+%% Add Copy Figure Options to MenuBar
+copyMenu = uimenu(fig, "Text", "Copy/Export Figure");
+
+uimenu(copyMenu, "Text", "Copy Polar Plot", ...
+    MenuSelectedFcn=@copyFigure);
+uimenu(copyMenu, "Text", "Copy Structure Definition", ...
+    MenuSelectedFcn=@copyStructure);
+uimenu(copyMenu, "Text", "Copy Both", ...
+    MenuSelectedFcn=@copyFigureAndStructure);
+
+uimenu(copyMenu, "Text", "Export Polar Plot", ...
+    MenuSelectedFcn=@exportFigure, Separator="on");
+uimenu(copyMenu, "Text", "Export Structure Definition", ...
+    MenuSelectedFcn=@exportStructure);
+uimenu(copyMenu, "Text", "Export Both", ...
+    MenuSelectedFcn=@exportFigureAndStructure);
 
 %% Save initial material structure
 handles.f = f;
-handles.NL = NL;
+handles.NL = cellfun(@copy, NL, UniformOutput=false);
 
-numLayers = size(thk, 2);
+numLayers = numel(thk);
 
-%% Create plot
-ax = axes(plotPanel);
+%% Create Structure Description
+structureAxis = axes(plotPanel, ...
+    Position=[0, 0, 1, options.StructureAxisSize], ...
+    TickLength=[0, 0], XTick={}, YTick={}, ...
+    Color="none", XColor="none", YColor="none");
 
-[h1, h2, h3] = zplane([], [], ax);
+[~, structureString] = NL{1}.printStructure(er, [], thk, Title="");
+
+structureText = text(structureAxis, 0.5, 0.5, structureString, ...
+    Units="normalized", HorizontalAlignment="center", ...
+    FontName="Monospaced", FontWeight="bold", FontSize=9);
+
+handles.structureText = structureText;
+handles.structureAxis = structureAxis;
+
+%% Create Polar Plot
+plotAxisPosition = options.PlotAxisPosition;
+plotAxisPosition(2) = 1 - (1 - plotAxisPosition(2)) ...
+    .* (1 - options.StructureAxisSize);
+plotAxisPosition(4) = plotAxisPosition(4) ...
+    .* (1 - options.StructureAxisSize);
+plotAxis = axes(plotPanel, Position=plotAxisPosition);
+
+[h1, h2, h3] = zplane([], [], plotAxis);
 h1.HandleVisibility = "off";
 h2.HandleVisibility = "off";
 h3.HandleVisibility = "off";
+xlabel("");
+ylabel("");
 
-xlim(ax, [-1.1, 1.1]);
-ylim(ax, [-1.1, 1.1]);
-hold on;
+xlim(plotAxis, [-1.1, 1.1]);
+ylim(plotAxis, [-1.1, 1.1]);
+hold(plotAxis, "on");
 
-gamPlot = cell(size(NL,2), 1);
-gamFitPlot = cell(size(NL,2), 1);
-plotNum = 1;
+gamPlot = cell(numel(NL), 1);
+gamFitPlot = cell(numel(NL), 1);
 
 % Obtain initial parameters and calculate initial values
-for ii = 1:size(NL, 2)
+for ii = 1:numel(NL)
     gam = NL{ii}.calculate(f{ii}, er, [], thk);
+    gamFit = interp(gam, options.GamInterp);
     
-    for jj = 1:size(gam, 2)
-        gamFit = interp(gam(:,jj), options.GamInterp);
+    gamPlot{ii} = plot(plotAxis, gam, ".", Linewidth=options.PlotLineWidth, ...
+        HandleVisibility="off");
+    gamFitPlot{ii} = plot(plotAxis, gamFit, Linewidth=options.PlotLineWidth, ...
+        DisplayName = NL{ii}.getOutputLabels());
+end
 
-        gamPlot{plotNum} = plot(ax, real(gam(:,jj)), imag(gam(:,jj)), '.', 'Linewidth', options.PlotLineWidth);
-        gamPlot{plotNum}.HandleVisibility = 'off';
-        gamFitPlot{plotNum} = plot(ax, real(gamFit), imag(gamFit), 'Linewidth', options.PlotLineWidth);
-        
-        plotNum = plotNum + 1;
+if options.ShowLegend
+    if isfield(options, "Legend")
+        legend(plotAxis, options.Legend);
+    else
+        legend(plotAxis);
     end
 end
 
-if isfield(options, 'legend')
-   legend(ax, options.Legend); 
-end
+hold(plotAxis, "off");
 
-hold off;
+handles.plotAxis = plotAxis;
 handles.gamPlot = gamPlot;
 handles.gamFitPlot = gamFitPlot;
 
+%% Figure Size Change Callback
+fig.SizeChangedFcn = @figureResizeCallback;
+
 %% Create sliders
-createSlider = @(panel, ind, tag) uicontrol('Parent', panel, ...
-    'Style', 'slider', 'Units', 'normalized', ... 
-    'Position', [options.SliderXPos 0.75-options.SliderYPos*(ind-1) options.SliderLength options.SliderWidth],...
-    'Tag', tag);
- 
+createSlider = @(panel, ind, tag) uicontrol(Parent=panel, ...
+    Style="slider", Units="normalized", ...
+    Position=[options.SliderXPos, 0.75 - options.SliderYPos*(ind - 1), ...
+    options.SliderLength, options.SliderWidth], Tag=tag);
+
 uiSliders.erSliders = cell(numLayers, 1);
 uiSliders.erpSliders = cell(numLayers, 1);
 uiSliders.thkSliders = cell(numLayers, 1);
 uiSliders.erRange = options.ErBounds + zeros(numLayers, 2);
-uiSliders.erpRange = options.ErpBounds + zeros(numLayers, 2);
-uiSliders.thkRange = options.ThkBounds + zeros(numLayers, 2);
+uiSliders.erpRange = log10(options.ErpBounds) + zeros(numLayers, 2);
+uiSliders.thkRange = log10(options.ThkBounds) + zeros(numLayers, 2);
 
 for ii = 1:numLayers
     % Create sliders
-    uiSliders.erSliders{ii} = createSlider(erPanel, ii, sprintf('er-%d',ii));
-    uiSliders.erpSliders{ii} = createSlider(erpPanel, ii, sprintf('erp-%d',ii));
-    uiSliders.thkSliders{ii} = createSlider(thkPanel, ii, sprintf('thk-%d',ii));
-
+    uiSliders.erSliders{ii} = createSlider(erPanel, ii, sprintf("er-%d", ii));
+    uiSliders.erpSliders{ii} = createSlider(erpPanel, ii, sprintf("erp-%d", ii));
+    uiSliders.thkSliders{ii} = createSlider(thkPanel, ii, sprintf("thk-%d", ii));
+    
     % Preset initial values
-    erSliderLoc = in_lerp(real(er(ii)), uiSliders.erRange(ii,:));
+    erSliderLoc = in_lerp(real(er(ii)), uiSliders.erRange(ii, :));
     if erSliderLoc > 1
         uiSliders.erSliders{ii}.Value = 1;
     elseif erSliderLoc < 0
@@ -179,7 +248,7 @@ for ii = 1:numLayers
         uiSliders.erSliders{ii}.Value = erSliderLoc;
     end
     
-    erpSliderLoc = in_lerp(log10(abs(imag(er(ii))))/log10(10), uiSliders.erpRange(ii,:));
+    erpSliderLoc = in_lerp(log10(abs(imag(er(ii)))), uiSliders.erpRange(ii, :));
     if erpSliderLoc > 1
         uiSliders.erpSliders{ii}.Value = 1;
     elseif erpSliderLoc < 0
@@ -188,7 +257,7 @@ for ii = 1:numLayers
         uiSliders.erpSliders{ii}.Value = erpSliderLoc;
     end
     
-    thkSliderLoc = in_lerp(log10(thk(ii))/log10(10), uiSliders.thkRange(ii,:));
+    thkSliderLoc = in_lerp(log10(thk(ii)), uiSliders.thkRange(ii, :));
     if thkSliderLoc > 1
         uiSliders.thkSliders{ii}.Value = 1;
     elseif thkSliderLoc < 0
@@ -199,20 +268,20 @@ for ii = 1:numLayers
 end
 
 % Create checkbox for infinite half plane in thk panel
-handles.isInfHalfPlane = uicontrol('Style', 'checkbox', 'Parent', thkPanel, ...
-    'String', 'Infinite Half-Plane (Bottom Layer)', 'Units', 'normalized', ...
-    'Position', [0 0.75-0.15*(numLayers) 0.5 0.1], ...
-    'FontSize', 8, 'HorizontalAlignment', 'right');
-handles.isInfHalfPlane.Callback = @halfPlaneValueChange;
+handles.isInfHalfPlane = uicontrol(Style="checkbox", Parent=thkPanel, ...
+    String="Infinite Half-Plane (Bottom Layer)", Units="normalized", ...
+    Position=[0, 0.75 - 0.15*numLayers, 0.5, 0.1], ...
+    FontSize=8, HorizontalAlignment="right", CallBack=@halfPlaneValueChange);
 
 %% Create slider labels
-createTopLabel = @(panel) uicontrol('Style', 'text', 'String', 'Top Layer', ...
-    'parent', panel, 'Units' , 'normalized', 'Position', [0 0.9 1 0.1], ...
-    'HorizontalAlignment', 'left');
+createTopLabel = @(panel) uicontrol(Style="text", String="Top Layer", ...
+    Parent=panel, Units="normalized", Position=[0, 0.9, 1, 0.1], ...
+    HorizontalAlignment="left");
 
-createBottomLabel = @(panel) uicontrol('Style', 'text', 'String', 'Bottom Layer', ...
-    'parent', panel, 'Units' , 'normalized', 'Position', [0 0.75-options.SliderYPos*(numLayers) 0.2 0.1], ...
-    'HorizontalAlignment', 'left');
+createBottomLabel = @(panel) uicontrol(Style="text", String="Bottom Layer", ...
+    Parent=panel, Units="normalized", ...
+    Position=[0, 0.75 - options.SliderYPos*numLayers, 0.2, 0.1], ...
+    HorizontalAlignment="left");
 
 createTopLabel(erPanel);
 createBottomLabel(erPanel);
@@ -233,19 +302,16 @@ uiEditField.thkCV = cell(numLayers, 1);
 
 % Create edit fields
 for ii = 1:numLayers
-    uiEditField.erLB{ii} = LBValueField(erPanel, ii, lerp(0, uiSliders.erRange(ii,:)));
-    uiEditField.erUB{ii} = UBValueField(erPanel, ii, lerp(1, uiSliders.erRange(ii,:)));
-%     uiEditField.erCV{ii} = CVValueField(erPanel, ii, lerp(uiSliders.erSliders{ii}.Value, uiSliders.erRange(ii,:)));
+    uiEditField.erLB{ii} = LBValueField(erPanel, ii, lerp(0, uiSliders.erRange(ii, :)));
+    uiEditField.erUB{ii} = UBValueField(erPanel, ii, lerp(1, uiSliders.erRange(ii, :)));
     uiEditField.erCV{ii} = CVValueField(erPanel, ii, real(er(ii)));
     
-    uiEditField.erpLB{ii} = LBValueField(erpPanel, ii, 10.^lerp(0, uiSliders.erpRange(ii,:)));
-    uiEditField.erpUB{ii} = UBValueField(erpPanel, ii, 10.^lerp(1, uiSliders.erpRange(ii,:)));
-%     uiEditField.erpCV{ii} = CVValueField(erpPanel, ii, 10.^lerp(uiSliders.erpSliders{ii}.Value, uiSliders.erpRange(ii,:)));
+    uiEditField.erpLB{ii} = LBValueField(erpPanel, ii, 10.^lerp(0, uiSliders.erpRange(ii, :)));
+    uiEditField.erpUB{ii} = UBValueField(erpPanel, ii, 10.^lerp(1, uiSliders.erpRange(ii, :)));
     uiEditField.erpCV{ii} = CVValueField(erpPanel, ii, abs(imag(er(ii))));
     
-    uiEditField.thkLB{ii} = LBValueField(thkPanel, ii, 10.^lerp(0, uiSliders.thkRange(ii,:)));
-    uiEditField.thkUB{ii} = UBValueField(thkPanel, ii, 10.^lerp(1, uiSliders.thkRange(ii,:)));
-%     uiEditField.thkCV{ii} = CVValueField(thkPanel, ii, 10.^lerp(uiSliders.thkSliders{ii}.Value, uiSliders.thkRange(ii,:)));
+    uiEditField.thkLB{ii} = LBValueField(thkPanel, ii, 10.^lerp(0, uiSliders.thkRange(ii, :)));
+    uiEditField.thkUB{ii} = UBValueField(thkPanel, ii, 10.^lerp(1, uiSliders.thkRange(ii, :)));
     uiEditField.thkCV{ii} = CVValueField(thkPanel, ii, thk(ii));
 end
 
@@ -261,9 +327,12 @@ for ii = 1:numLayers
     uiSliders.thkSliders{ii}.Callback = valueChange;
     
     % Set listeners
-    addlistener(uiSliders.erSliders{ii}, 'Value', 'PostSet', @(~, eventdata) sliderValueChanged(eventdata.AffectedObject, eventdata));
-    addlistener(uiSliders.erpSliders{ii}, 'Value', 'PostSet', @(~, eventdata) sliderValueChanged(eventdata.AffectedObject, eventdata));
-    addlistener(uiSliders.thkSliders{ii}, 'Value', 'PostSet', @(~, eventdata) sliderValueChanged(eventdata.AffectedObject, eventdata));
+    addlistener(uiSliders.erSliders{ii}, "Value", "PostSet", ...
+        @(~, eventdata) sliderValueChanged(eventdata.AffectedObject, eventdata));
+    addlistener(uiSliders.erpSliders{ii}, "Value", "PostSet", ...
+        @(~, eventdata) sliderValueChanged(eventdata.AffectedObject, eventdata));
+    addlistener(uiSliders.thkSliders{ii}, "Value", "PostSet", ...
+        @(~, eventdata) sliderValueChanged(eventdata.AffectedObject, eventdata));
 end
 
 handles.uiSliders = uiSliders;
@@ -274,134 +343,131 @@ if nargout == 1
     varargout{1} = handles;
 end
 
+% Store data into figure
 guidata(fig, handles);
+
 end
 
 %% Slider value change function
-function sliderValueChanged(hObject, eventdata)
+function sliderValueChanged(hObject, ~)
 handles = guidata(hObject);
 
-[er, erp, thk] = valueExtractor(handles);
+% Extract value from slider and current value edit field
+[er, erp, thk] = valueReader(handles);
+[er_slider, erp_slider, thk_slider] = valueExtractor(handles);
 
-panel = extractBefore(hObject.Tag,'-');
-layer = str2num(extractAfter(hObject.Tag,'-'));
+panel = extractBefore(hObject.Tag, "-");
+layer = str2double(extractAfter(hObject.Tag, "-"));
 
+% Update the value being changed in the appropriate edit field
 switch panel
-    case 'er'        
-            handles.uiEditField.erCV{layer}.String = er(layer);
-    case 'erp'
-            handles.uiEditField.erpCV{layer}.String = erp(layer);
-    case 'thk'
-            handles.uiEditField.thkCV{layer}.String = thk(layer);
+    case "er"
+        handles.uiEditField.erCV{layer}.String = er_slider(layer);
+        er(layer) = er_slider(layer);
+    case "erp"
+        handles.uiEditField.erpCV{layer}.String = erp_slider(layer);
+        erp(layer) = erp_slider(layer);
+    case "thk"
+        handles.uiEditField.thkCV{layer}.String = thk_slider(layer);
+        thk(layer) = thk_slider(layer);
 end
 
 handles = plotGam(handles, er, erp, thk);
 
+% Store data into figure
 guidata(hObject, handles);
 
+% Force redraw axes
 drawnow;
+
 end
 
 %% Lower bound edit field creation
 function LBField = LBValueField(panel, ind, initVal)
-LBField = uicontrol('Style', 'edit', 'Parent', panel);
+LBField = uicontrol(Style="edit", Parent=panel, Units="Normalized", ...
+    CallBack=@LBFieldChanged, Tag=num2str(ind), String=num2str(initVal), ...
+    Position=[0.05, 0.75 - 0.15*(ind - 1), 0.1, 0.12]);
+
 uicontrol(LBField);
-
-pos = [0.05 0.75-0.15*(ind-1) 0.1 0.12];
-
-LBField.Units = 'Normalized';
-LBField.Position = pos;
-LBField.Callback = @LBFieldChanged;
-LBField.Tag = num2str(ind);
-LBField.String = num2str(initVal);
 end
 
 %% Lower bound edit field callback
-function LBFieldChanged(hObject, eventdata)
+function LBFieldChanged(hObject, ~)
 handles = guidata(hObject);
 
 panel = hObject.Parent.Tag;
-layer = str2num(hObject.Tag);
+layer = str2double(hObject.Tag);
 lowerBound = str2double(hObject.String);
 
 if ~isnan(lowerBound)
     switch panel
-        case 'er'
-            currentValue = str2num(handles.uiEditField.erCV{layer}.String);
-            
-            if lowerBound <= currentValue
+        case "er"
+            currentValue = str2double(handles.uiEditField.erCV{layer}.String);
+            if lowerBound < 1
+                hObject.String = num2str(1);
+                handles.uiSliders.erRange(layer,1) = 1;
+            elseif lowerBound <= currentValue
                 handles.uiSliders.erRange(layer,1) = lowerBound;
             else
                 hObject.String = num2str(currentValue);
                 handles.uiSliders.erRange(layer,1) = currentValue;
             end
-            
             guidata(hObject, handles);
-            handles.uiSliders.erSliders{layer}.Value = in_lerp(currentValue, handles.uiSliders.erRange(layer,:));
-        case 'erp'
-            currentValue = str2num(handles.uiEditField.erpCV{layer}.String);
-            
+        case "erp"
+            currentValue = str2double(handles.uiEditField.erpCV{layer}.String);
             if lowerBound <= currentValue
                 handles.uiSliders.erpRange(layer,1) = log10(lowerBound);
             else
                 hObject.String = num2str(currentValue);
                 handles.uiSliders.erpRange(layer,1) = log10(currentValue);
             end
-                
             guidata(hObject, handles);
-            handles.uiSliders.erpSliders{layer}.Value = in_lerp(log10(currentValue)/log10(10), handles.uiSliders.erpRange(layer,:));
-        case 'thk'
-            currentValue = str2num(handles.uiEditField.thkCV{layer}.String);
-            
+        case "thk"
+            currentValue = str2double(handles.uiEditField.thkCV{layer}.String);
             if lowerBound <= currentValue
                 handles.uiSliders.thkRange(layer,1) = log10(lowerBound);
             else
                 hObject.String = num2str(currentValue);
                 handles.uiSliders.thkRange(layer,1) = log10(currentValue);
             end
-            
             guidata(hObject, handles);
-            handles.uiSliders.thkSliders{layer}.Value = in_lerp(log10(currentValue)/log10(10), handles.uiSliders.thkRange(layer,:));  
     end
 else
     switch panel
-        case 'er'
+        case "er"
             hObject.String = num2str(handles.uiSliders.erRange(layer,1));
-        case 'erp'
+        case "erp"
             hObject.String = num2str(10.^(handles.uiSliders.erpRange(layer,1)));
-        case 'thk'
+        case "thk"
             hObject.String = num2str(10.^(handles.uiSliders.thkRange(layer,1)));
     end
 end
 
-guidata(hObject, handles)
+% Store data into figure
+guidata(hObject, handles);
+
 end
 
 %% Upper bound edit field and callback
 function limitField = UBValueField(panel, ind, initVal)
-limitField = uicontrol('Style', 'edit', 'Parent', panel);
+limitField = uicontrol(Style="edit", Parent=panel, Units="Normalized", ...
+    CallBack=@UBFieldChanged, Tag=num2str(ind), String=num2str(initVal), ...
+    Position=[0.745, 0.75 - 0.15*(ind - 1), 0.1, 0.12]);
+
 uicontrol(limitField);
-
-pos = [0.745 0.75-0.15*(ind-1) 0.1 0.12];
-
-limitField.Units = 'Normalized';
-limitField.Position = pos;
-limitField.Callback = @UBFieldChanged;
-limitField.Tag = num2str(ind);
-limitField.String = num2str(initVal);
 end
 
-function UBFieldChanged(hObject, eventdata)
+function UBFieldChanged(hObject, ~)
 handles = guidata(hObject);
 
 panel = hObject.Parent.Tag;
-layer = str2num(hObject.Tag);
+layer = str2double(hObject.Tag);
 upperBound = str2double(hObject.String);
 
 if ~isnan(upperBound)
     switch panel
-        case 'er'
-            currentValue = str2num(handles.uiEditField.erCV{layer}.String);
+        case "er"
+            currentValue = str2double(handles.uiEditField.erCV{layer}.String);
             
             if upperBound >= currentValue
                 handles.uiSliders.erRange(layer,2) = upperBound;
@@ -411,21 +477,21 @@ if ~isnan(upperBound)
             end
             
             guidata(hObject, handles);
-            handles.uiSliders.erSliders{layer}.Value = in_lerp(currentValue, handles.uiSliders.erRange(layer,:));
-        case 'erp'
-            currentValue = str2num(handles.uiEditField.erpCV{layer}.String);
+            handles.uiSliders.erSliders{layer}.Value = in_lerp(currentValue, handles.uiSliders.erRange(layer, :));
+        case "erp"
+            currentValue = str2double(handles.uiEditField.erpCV{layer}.String);
             
-            if upperBound >= currentValue 
+            if upperBound >= currentValue
                 handles.uiSliders.erpRange(layer,2) = log10(upperBound);
             else
                 hObject.String = num2str(currentValue);
                 handles.uiSliders.erpRange(layer,2) = log10(currentValue);
             end
-                
+            
             guidata(hObject, handles);
-            handles.uiSliders.erpSliders{layer}.Value = in_lerp(log10(currentValue)/log10(10), handles.uiSliders.erpRange(layer,:));
-        case 'thk'
-            currentValue = str2num(handles.uiEditField.thkCV{layer}.String);
+            handles.uiSliders.erpSliders{layer}.Value = in_lerp(log10(currentValue), handles.uiSliders.erpRange(layer, :));
+        case "thk"
+            currentValue = str2double(handles.uiEditField.thkCV{layer}.String);
             
             if upperBound >= currentValue
                 handles.uiSliders.thkRange(layer,2) = log10(upperBound);
@@ -435,53 +501,54 @@ if ~isnan(upperBound)
             end
             
             guidata(hObject, handles);
-            handles.uiSliders.thkSliders{layer}.Value = in_lerp(log10(currentValue)/log10(10), handles.uiSliders.thkRange(layer,:));  
+            handles.uiSliders.thkSliders{layer}.Value = in_lerp(log10(currentValue), handles.uiSliders.thkRange(layer, :));
     end
 else
     switch panel
-        case 'er'
+        case "er"
             hObject.String = num2str(handles.uiSliders.erRange(layer,2));
-        case 'erp'
+        case "erp"
             hObject.String = num2str(10.^(handles.uiSliders.erpRange(layer,2)));
-        case 'thk'
+        case "thk"
             hObject.String = num2str(10.^(handles.uiSliders.thkRange(layer,2)));
     end
 end
 
-guidata(hObject, handles)
+% Store data into figure
+guidata(hObject, handles);
+
 end
 
 %% Current value edit field creation
 function CVField = CVValueField(panel, ind, initVal)
-CVField = uicontrol('Style', 'edit', 'Parent', panel);
+CVField = uicontrol(Style="edit", Parent=panel, Units="Normalized", ...
+    CallBack=@CVFieldChanged, Tag=num2str(ind), String=num2str(initVal), ...
+    Position=[0.87, 0.75 - 0.15*(ind - 1), 0.1, 0.12]);
+
 uicontrol(CVField);
-
-pos = [0.87 0.75-0.15*(ind-1) 0.1 0.12];
-
-CVField.Units = 'Normalized';
-CVField.Position = pos;
-CVField.Callback = @CVFieldChanged;
-CVField.Tag = num2str(ind);
-CVField.String = num2str(initVal);
 end
 
 %% Current value edit field callback
-function CVFieldChanged(hObject, eventdata)
+function CVFieldChanged(hObject, ~)
 handles = guidata(hObject);
 
 uiSliders = handles.uiSliders;
 
 panel = hObject.Parent.Tag;
-layer = str2num(hObject.Tag);
+layer = str2double(hObject.Tag);
 currentValue = str2double(hObject.String);
 isOutsideBounds = 0;
 
-[er, erp, thk] = valueExtractor(handles);
-
-if ~isnan(currentValue)
+if ~isnan(currentValue) || isreal(currentValue)
+    [er, erp, thk] = valueReader(handles);
+    
     switch panel
-        case 'er'
-            sliderValue = in_lerp(currentValue, uiSliders.erRange(layer,:));
+        case "er"
+            if currentValue < 1
+                hObject.String = num2str(lerp(uiSliders.erSliders{layer}.Value, uiSliders.erRange(layer, :)));
+            end
+            
+            sliderValue = in_lerp(currentValue, uiSliders.erRange(layer, :));
             
             if sliderValue >= 0 && sliderValue <= 1
                 uiSliders.erSliders{layer}.Value = sliderValue;
@@ -492,10 +559,10 @@ if ~isnan(currentValue)
                 uiSliders.erSliders{layer}.Value = 1;
                 isOutsideBounds = 1;
             else
-                hObject.String = num2str(lerp(uiSliders.erSliders{layer}.Value, uiSliders.erRange(layer,:)));
+                hObject.String = num2str(lerp(uiSliders.erSliders{layer}.Value, uiSliders.erRange(layer, :)));
             end
-        case 'erp'
-            sliderValue = in_lerp(log10(currentValue)/log10(10), uiSliders.erpRange(layer,:));
+        case "erp"
+            sliderValue = in_lerp(log10(currentValue), uiSliders.erpRange(layer, :));
             
             if sliderValue >= 0 && sliderValue <= 1
                 uiSliders.erpSliders{layer}.Value = sliderValue;
@@ -506,13 +573,13 @@ if ~isnan(currentValue)
                 uiSliders.erpSliders{layer}.Value = 1;
                 isOutsideBounds = 1;
             else
-                hObject.String = num2str(lerp(uiSliders.erpSliders{layer}.Value, uiSliders.erpRange(layer,:)));
+                hObject.String = num2str(lerp(uiSliders.erpSliders{layer}.Value, uiSliders.erpRange(layer, :)));
             end
-        case 'thk'
-            sliderValue = in_lerp(log10(currentValue)/log10(10), uiSliders.thkRange(layer,:)); 
+        case "thk"
+            sliderValue = in_lerp(log10(currentValue), uiSliders.thkRange(layer, :));
             
             if sliderValue >= 0 && sliderValue <= 1
-                uiSliders.thkSliders{layer}.Value = sliderValue;  
+                uiSliders.thkSliders{layer}.Value = sliderValue;
             elseif sliderValue < 0
                 uiSliders.thkSliders{layer}.Value = 0;
                 isOutsideBounds = 1;
@@ -520,42 +587,43 @@ if ~isnan(currentValue)
                 uiSliders.thkSliders{layer}.Value = 1;
                 isOutsideBounds = 1;
             else
-                hObject.String = num2str(lerp(uiSliders.thkSliders{layer}.Value, uiSliders.thkRange(layer,:)));
+                hObject.String = num2str(lerp(uiSliders.thkSliders{layer}.Value, uiSliders.thkRange(layer, :)));
             end
     end
 else
     switch panel
-        case 'er'
-            hObject.String = num2str(lerp(uiSliders.erSliders{layer}.Value, uiSliders.erRange(layer,:)));
-        case 'erp'
-            hObject.String = num2str(10.^lerp(uiSliders.erpSliders{layer}.Value, uiSliders.erpRange(layer,:)));
-        case 'thk'
-            hObject.String = num2str(10.^lerp(uiSliders.thkSliders{layer}.Value, uiSliders.thkRange(layer,:)));
+        case "er"
+            hObject.String = num2str(lerp(uiSliders.erSliders{layer}.Value, uiSliders.erRange(layer, :)));
+        case "erp"
+            hObject.String = num2str(10.^lerp(uiSliders.erpSliders{layer}.Value, uiSliders.erpRange(layer, :)));
+        case "thk"
+            hObject.String = num2str(10.^lerp(uiSliders.thkSliders{layer}.Value, uiSliders.thkRange(layer, :)));
     end
 end
 
 if isOutsideBounds
     switch panel
-        case 'er'
+        case "er"
             er(layer) = currentValue;
-            handles = plotGam(handles, er, erp, thk);
-        case 'erp'
+        case "erp"
             erp(layer) = currentValue;
-            handles = plotGam(handles, er, erp, thk);
-        case 'thk'
+        case "thk"
             thk(layer) = currentValue;
-            handles = plotGam(handles, er, erp, thk);
     end
     hObject.String = currentValue;
 end
 
+handles = plotGam(handles, er, erp, thk);
+
 handles.uiSliders = uiSliders;
 
+% Store data into figure
 guidata(hObject, handles);
+
 end
 
 %% Infinite half plane checkbox value change callback
-function halfPlaneValueChange(hObject, eventdata)
+function halfPlaneValueChange(hObject, ~)
 handles = guidata(hObject);
 
 isInfHalfPlane = handles.isInfHalfPlane.Value;
@@ -564,35 +632,36 @@ layer = size(handles.uiSliders.thkSliders, 1);
 
 % Disable the last layer's thickness parameters textboxes and slider
 if isInfHalfPlane
-    handles.uiSliders.thkSliders{layer}.Enable = 'off';
-    handles.uiEditField.thkCV{layer}.Enable = 'off';
-    handles.uiEditField.thkLB{layer}.Enable = 'off';
-    handles.uiEditField.thkUB{layer}.Enable = 'off';
+    handles.uiSliders.thkSliders{layer}.Enable = "off";
+    handles.uiEditField.thkCV{layer}.Enable = "off";
+    handles.uiEditField.thkLB{layer}.Enable = "off";
+    handles.uiEditField.thkUB{layer}.Enable = "off";
 else
-    handles.uiSliders.thkSliders{layer}.Enable = 'on';
-    handles.uiEditField.thkCV{layer}.Enable = 'on';
-    handles.uiEditField.thkLB{layer}.Enable = 'on';
-    handles.uiEditField.thkUB{layer}.Enable = 'on';
-end 
+    handles.uiSliders.thkSliders{layer}.Enable = "on";
+    handles.uiEditField.thkCV{layer}.Enable = "on";
+    handles.uiEditField.thkLB{layer}.Enable = "on";
+    handles.uiEditField.thkUB{layer}.Enable = "on";
+end
 
 [er, erp, thk] = valueExtractor(handles);
 
-panel = extractBefore(hObject.Tag,'-');
-layer = str2num(extractAfter(hObject.Tag,'-'));
+panel = extractBefore(hObject.Tag, "-");
+layer = str2double(extractAfter(hObject.Tag, "-"));
 
 switch panel
-    case 'er'        
-            handles.uiEditField.erCV{layer}.String = er(layer);
-    case 'erp'
-            handles.uiEditField.erpCV{layer}.String = erp(layer);
-    case 'thk'
-            handles.uiEditField.thkCV{layer}.String = thk(layer);
+    case "er"
+        handles.uiEditField.erCV{layer}.String = er(layer);
+    case "erp"
+        handles.uiEditField.erpCV{layer}.String = erp(layer);
+    case "thk"
+        handles.uiEditField.thkCV{layer}.String = thk(layer);
 end
 
 handles = plotGam(handles, er, erp, thk);
 
-
+% Store data into figure
 guidata(hObject, handles);
+
 end
 
 %% Interpolate and inverse interpolation of values
@@ -616,28 +685,96 @@ erp = 10.^lerp_arr(cellfun(valueExtracted, handles.uiSliders.erpSliders), handle
 thk = 10.^lerp_arr(cellfun(valueExtracted, handles.uiSliders.thkSliders), handles.uiSliders.thkRange);
 end
 
+%% Value reader from current value edit field
+function [er, erp, thk] = valueReader(handles)
+% Read current value from edit field which is string stored in cell array
+valueRead = @(s) s.String;
+er_str = cellfun(valueRead, handles.uiEditField.erCV, UniformOutput=false);
+erp_str = cellfun(valueRead, handles.uiEditField.erpCV, UniformOutput=false);
+thk_str = cellfun(valueRead, handles.uiEditField.thkCV, UniformOutput=false);
+
+% Convert string to number
+er = cellfun(@str2double, er_str);
+erp = cellfun(@str2double, erp_str);
+thk = cellfun(@str2double, thk_str);
+end
+
+%% Figure Resize Callback
+function figureResizeCallback(fig, ~)
+handles = guidata(fig);
+figMinRatio = min(fig.Position([3, 4]) ./ [1000, 600]);
+handles.structureText.FontSize = round(9 .* figMinRatio);
+end
+
+%% Copy Figure Callbacks
+function copyFigure(fig, ~)
+handles = guidata(fig.Parent.Parent);
+copygraphics(handles.plotAxis);
+end
+
+function copyStructure(fig, ~)
+handles = guidata(fig.Parent.Parent);
+copygraphics(handles.structureAxis);
+end
+
+function copyFigureAndStructure(fig, ~)
+handles = guidata(fig.Parent.Parent);
+copygraphics(handles.plotPanel);
+end
+
+%% Export Figure Callbacks
+function exportFigure(fig, ~)
+handles = guidata(fig.Parent.Parent);
+newFig = figure;
+newPlotAxis = copyobj(handles.plotAxis, newFig);
+newPlotAxis.Position = [0.13, 0.11, 0.775, 0.815];
+
+if isprop(handles.plotAxis, "Legend")
+    legend(newPlotAxis);
+end
+end
+
+function exportStructure(fig, ~)
+handles = guidata(fig.Parent.Parent);
+newFig = figure();
+newStructureAxis = copyobj(handles.structureAxis, newFig);
+newStructureAxis.Children(1).FontSize = 9;
+newStructureAxis.Position = [0.1, 0.1, 0.8, 0.8];
+end
+
+function exportFigureAndStructure(fig, ~)
+handles = guidata(fig.Parent.Parent);
+newFig = figure(Position=[680, 200, 560, 600]);
+newPlotAxis = copyobj(handles.plotAxis, newFig);
+newStructureAxis = copyobj(handles.structureAxis, newFig);
+newStructureAxis.Children(1).FontSize = 9;
+
+if isprop(handles.plotAxis, "Legend")
+    legend(newPlotAxis);
+end
+end
+
 %% Calculate and plot S-Parameters
 function handles = plotGam(handles, er, erp, thk)
 er_in = er - 1j*erp;
 thk_in = thk;
 
 if handles.isInfHalfPlane.Value
-   thk_in(end) = inf; 
+    thk_in(end) = inf;
 end
 
-plotNum = 1;
 for ii = 1:size(handles.NL, 2)
     gam = handles.NL{ii}.calculate(handles.f{ii}, er_in.', [], thk_in.');
+    gamFit = interp(gam, 10);
     
-    for jj = 1:size(gam, 2)
-        gamFit = interp(gam(:, jj), 10);
-
-        handles.gamFitPlot{plotNum}.XData = real(gamFit);
-        handles.gamFitPlot{plotNum}.YData = imag(gamFit);
-        handles.gamPlot{plotNum}.XData = real(gam(:, jj));
-        handles.gamPlot{plotNum}.YData = imag(gam(:, jj));
-        
-        plotNum = plotNum + 1;
-    end
+    handles.gamFitPlot{ii}.XData = real(gamFit);
+    handles.gamFitPlot{ii}.YData = imag(gamFit);
+    
+    handles.gamPlot{ii}.XData = real(gam);
+    handles.gamPlot{ii}.YData = imag(gam);
 end
+
+[~, handles.structureText.String] = ...
+    handles.NL{1}.printStructure(er_in, [], thk_in, Title="");
+
 end

@@ -27,6 +27,12 @@ function [q] = integralVectorized(fun, a, b, options)
 %
 % The size of the output Q will be the same as FUN((A + B)/2).
 %
+% Inputs:
+%   f - Function handle to integrate. Can be array-valued, see above.
+%   a (-1) - Scalar integration lower bound. Must be real and finite.
+%   b (1) - Scalar integration upper bound. Must be real and finite.
+% Outputs:
+%   q - Approximate integral value. Same size as fun((a + b)/2);
 % Named Options:
 %   RelTol (1e-6): Relative function tolerance constraint. See above.
 %   AbsTol (1e-8): Absolute function tolerance constraint. See above.
@@ -48,10 +54,10 @@ arguments
     
     options.RelTol(1, 1) {mustBeNonnegative, mustBeFinite} = 1e-6;
     options.AbsTol(1, 1) {mustBeNonnegative, mustBeFinite} = 1e-8;
-    options.Verbosity double {mustBeNonnegative, mustBeFinite} = 0;
-    options.InitialIntervalCount {mustBePositive, mustBeFinite} = 9;
-    options.MaxIntervalCount {mustBePositive, mustBeFinite} = 10000;
-    options.MaxFunctionEvaluations {mustBePositive, mustBeFinite} = 90000;
+    options.Verbosity double {mustBeInteger, mustBeNonnegative} = 0;
+    options.InitialIntervalCount {mustBeInteger, mustBePositive} = 9;
+    options.MaxIntervalCount {mustBeInteger, mustBePositive} = 10000;
+    options.MaxFunctionEvaluations {mustBeInteger, mustBePositive} = 90000;
     options.ErrInd(:, 1) {mustBeInteger, mustBePositive} = 1;
 end
 
@@ -157,8 +163,9 @@ while true
     
     % Error if splitting results in too many function evaluations
     if numel(nodesGK)*size(intervals, 2) + numEvaluations > options.MaxFunctionEvaluations
-        error("Maximum number of subintervals reached (%d > %d).", ...
-            size(intervals, 2), options.MaxIntervalCount);
+        error("Maximum number of function evaluations reached (%d > %d).", ...
+            numel(nodesGK)*size(intervals, 2) + numEvaluations, ...
+            options.MaxFunctionEvaluations);
     end
 end
 
