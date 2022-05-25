@@ -1,4 +1,4 @@
-function [gam] = calculate(O, f, er, ur, thk, options)
+function [gam] = calculate(O, f, er, ur, thk, varargin, options)
 %CALCULATE Calculate reflection/trasnmission coefficient(s) for structure.
 % Computes the reflection/transmission coefficients when looking into a
 % multilayer structure defined by er, ur, and thk at the frequencies
@@ -6,16 +6,20 @@ function [gam] = calculate(O, f, er, ur, thk, options)
 % nLayerForward (e.g., nLayerRectangular, etc.). Check documentation of the
 % specific subclass for more specific information.
 %
+% Note that the units for all distance and time (or frequency) parameters
+% are defined by the speedOfLight parameter. The default units are mm and
+% GHz.
+%
 % Example Usage:
-%   NL = nLayerRectangular(maxM, maxN, band=wgBand);
-%   NL = nLayerCircularTE(numModes, R=wgR);
-%   gam = NL.calculate(f, er, ur, thk);
-%   gam = NL.calculate(f, er, [], thk);
-%   gam = NL.calculate(f, [], ur, thk);
-%   gam = NL.calculate(f, [], ur, thk, BackingConductivity=sigma);
+%   NL = nLayerRectangular(maxM, maxN, waveguideBand=wgBand);
+%   NL = nLayerCircularTE(numModes, waveguideR=wgR);
+%   gam = NL.calculate(f, er, ur, thk, ...);
+%   gam = NL.calculate(f, er, [], thk, ...);
+%   gam = NL.calculate(f, [], ur, thk, ...);
+%   gam = NL.calculate(f, [], ur, thk, ..., BackingConductivity=sigma);
 %
 % Inputs:
-%   f - Column vector of frequencies (GHz).
+%   f - Column vector of frequencies.
 %   er - Array of complex relative permittivities for each layer. Every row
 %       er(ff, :) should contain the permittivity of each layer at the
 %       frequency f(ff). Pass in [] to use default value (1).
@@ -28,7 +32,7 @@ function [gam] = calculate(O, f, er, ur, thk, options)
 %       First dimension will have the same size as f.
 % Named Arguments:
 %   BackingConductivity (inf) - Conductivity of the backing conductor, in
-%       (S/m). Must be scalar or have the same length as f.
+%       (S/unitDistance). Must be scalar or have the same length as f.
 %
 % Author: Matt Dvorsky
 
@@ -38,6 +42,11 @@ arguments
     er(:, :);
     ur(:, :);
     thk(1, :);
+end
+arguments (Repeating)
+    varargin;
+end
+arguments
     options.BackingConductivity(:, 1) = inf;
 end
 
@@ -52,7 +61,7 @@ if any(isfinite(options.BackingConductivity))
 end
 
 %% Calculate Reflection/Transmission Coefficients
-gam = O.calculateGamma(f, er, ur, thk);
+gam = O.calculate_impl(f, er, ur, thk, varargin{:});
 
 end
 

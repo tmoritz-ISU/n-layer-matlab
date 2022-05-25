@@ -1,17 +1,3 @@
-% This example file shows how to use nLayerViewer to look at the outputs
-% of various nLayerForward calculators.
-%
-% The basic usage of nLayerViewer is as follows (for single calculator):
-%   NL = nLayerRectangular(...);
-%   nLayerViewer();
-%
-% In the above example, maxM and maxN are the maximum mode m and n indices
-% for any considered TEmn and TMmn modes. Typically, they are set to 3 and
-% 2, respectively. Also, f is a column vector of frequencies, and er, ur,
-% and thk are row vectors of complex permittivity and permeability and
-% thickness for each layer. Optionally, er and ur can be matrices where
-% each row corresponds to a particular frequency.
-%
 % Author: Matt Dvorsky
 
 %% Clear Workspace
@@ -19,37 +5,41 @@ clc;
 clear;
 close all;
 
-%% Example 1: Ka-band rectangular waveguide
-f1 = linspace(26.5, 40, 21).';
-er1 = [1 - 0.0j, 4 - 0.05j];
-thk1 = [0.5, 0.5];
+%% Inputs
+f = linspace(26.5, 40, 21).';
+er = [1, 2 - 0.05j];
+ur = [1, 0.5 - 0.01j];
+thk = [0.5, 0.5];
+
 noiseStd = 0.01;
 
-NL1 = nLayerRectangular(3, 2, Band="ka");
-NL1.printStructure(er1, [], thk1);
-gamActual1 = NL1.calculate(f1, er1, [], thk1);
-gamMeas1 = gamActual1 + (sqrt(0.5) .* noiseStd) ...
-    .* complex(randn(size(f1)), randn(size(f1)));
+%% Create Measurement Data
+NL = nLayerFilledRectangular(1, 0, waveguideBand="ka", checkStructureValues=false);
+gamActual = NL.calculate(f, er, ur, thk);
+gamMeas = gamActual + (sqrt(0.5) .* noiseStd) ...
+    .* complex(randn(size(f)), randn(size(f)));
 
 %% Solve for Structure
-NLsolver = nLayerInverse(2, Verbosity=1);
-NLsolver.setLayersToSolve(ErLayers=[2], ErpLayers=[2], ThkLayers=[1, 2]);
-NLsolver.setInitialValues(ErValue=[1, 4], ErpValue=[0.0, 0.05], ThkValue=[0.1, 0.5]);
+NLsolver = nLayerInverse(2, verbosity=1);
+NLsolver.setLayersToSolve(Erp=[2], Erpp=[2], Urp=[2], Urpp=[2], Thk=[]);
+NLsolver.setRanges(UrpMin=[1, 0.01]);
+NLsolver.setInitialValues(Er=er, Ur=ur, Thk=thk);
 NLsolver.useGlobalOptimizer = false;
 
-
-NLsolver.printStructureParameters(ShowLimits=true, Title="Case 1: Input");
+NLsolver.printStructureParameters(ShowLimits=true, Title="Input");
 
 tic;
-[er, ur, thk, gam] = NLsolver.solveStructure(NL1, f1, gamMeas1);
+[Params, Gamma, Uncert] = NLsolver.solveStructure(NL, f, gamMeas);
 toc;
 
-NLsolver.printStructureParameters(er, ur, thk, Title="Case 1: Output");
+% Uncert = NLsolver.computeParameterUncertainty(NL, f, NoiseStd=noiseStd);
+
+NLsolver.printStructureParameters(Params, Uncert, Title="Output");
 
 %% Plot
 figure;
-nLayerViewer(er, thk, NL1, f1);
+nLayerViewer(Params.er, Params.ur, Params.thk, NL, f);
 hold on;
-plot(gamMeas1, "", Linewidth=1.5);
-legend("Fit", "Measured");
+h = plot(gamMeas(:, :), ":", Linewidth=1.5);
+set(h, {'DisplayName'}, cellstr(compose("%s (Meas)", NL.getOutputLabels().')));
 

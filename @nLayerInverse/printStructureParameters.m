@@ -1,21 +1,34 @@
-function [varargout] = printStructureParameters(O, er, ur, thk, formatOptions, options)
+function [varargout] = printStructureParameters(O, Parameters, Uncertainty, formatOptions, options)
 %PRINTSTRUCTUREPARAMETERS Display multilayer structure solver parameters.
-%   Detailed explanation goes here
+% Prints the structure parameters for an nLayerInverse object. By default,
+% uses the initial values from the nLayerInverse object. If a 'Parameters'
+% struct is passed in (e.g., from the 'solveStructure' function), those
+% values will be shown instead.
+%
+% Additionally, an 'Uncertainty' struct can be passed in to show
+% uncertainty values (e.g., from the 'solveStructure' function).
+%
+% Example Usage:
+%   NLsolver.printStructureParameters(Title="title", ShowLimits=true);
+%   [Params, ~, Uncert] = NLsolver.solveStructure(...);
+%   NLsolver.printStructureParams(Params);
+%   NLsolver.printStructureParams(Params, Uncert);
+%
+% Author: Matt Dvorsky
 
 arguments
     O;
-    er(1, :) = [];
-    ur(1, :) = [];
-    thk(1, :) = [];
+    Parameters(1, 1) {mustBeA(Parameters, "struct")} = struct();
+    Uncertainty(1, 1) {mustBeA(Uncertainty, "struct")} = struct();
     
-    formatOptions.ShowLimits(1, 1) {mustBeNumericOrLogical} = false;
-    formatOptions.ShowInitialValues(1, 1) {mustBeNumericOrLogical} = true;
+    formatOptions.ShowLimits(1, 1) logical = false;
+    formatOptions.ShowInitialValues(1, 1) logical = true;
     formatOptions.SolveParameterFormatString {mustBeTextScalar} = "{%s}";
     
     options.Title {mustBeTextScalar} = "Solver Structure Parameters";
     options.BackingConductivity {mustBePositive} = inf;
     options.ThkUnitLabel {mustBeTextScalar} = "mm";
-    options.ConductivityUnitLabel {mustBeTextScalar} = "S/m";
+    options.ConductivityUnitLabel {mustBeTextScalar} = "S/mm";
     
     options.Width(1, 1) {mustBeInteger, mustBePositive} = 72;
     options.ThkWidth(1, 1) {mustBeInRange(options.ThkWidth, 0, 1)} = 0.3;
@@ -26,11 +39,18 @@ arguments
     options.ConductivityFormatString {mustBeTextScalar} = "%.4g";
 end
 
+%% Validate nLayerInverse Object
+O.validate();
+
 %% Get Values of er, ur, and thk
-if isempty(thk)
-    er = complex(O.erInitialValue, -O.erpInitialValue);
-    ur = [];
-    thk = O.thkInitialValue;
+if isempty(fieldnames(Parameters))
+    er = O.initialValue_er;
+    ur = O.initialValue_ur;
+    thk = O.initialValue_thk;
+else
+    er = Parameters.er;
+    ur = Parameters.ur;
+    thk = Parameters.thk;
 end
 
 %% Check Inputs
@@ -46,35 +66,58 @@ elseif size(options.FormatString, 2) ~= 5
     error("'size(FormatString, 2)' must be either 1 or 5.");
 end
 
+%% Add Uncertainty Labels
+options.AdditionalText = strings(0);
+if ~isempty(fieldnames(Uncertainty))
+    UncertaintyText = strings(length(thk), 3, 1);
+    
+    for ii = 1:length(thk)
+        UncertaintyText(ii, 1, 1) = sprintf("     +-(%s)", ...
+            sprintf(options.FormatString(ii, 1), Uncertainty.thk(ii)));
+        
+        UncertaintyText(ii, 2, 1) = sprintf("    +-(%s + j%s)", ...
+            sprintf(options.FormatString(ii, 3), real(Uncertainty.er(ii))), ...
+            sprintf(options.FormatString(ii, 4), imag(Uncertainty.er(ii))));
+        
+        UncertaintyText(ii, 3, 1) = sprintf("    +-(%s + j%s)", ...
+            sprintf(options.FormatString(ii, 4), real(Uncertainty.ur(ii))), ...
+            sprintf(options.FormatString(ii, 5), imag(Uncertainty.ur(ii))));
+    end
+
+    options.AdditionalText = cat(3, options.AdditionalText, UncertaintyText);
+end
+
 %% Add Limits for Each Parameter
 if formatOptions.ShowLimits
-    options.AdditionalText = strings(length(thk), 3, 2);
+    LimitsText = strings(length(thk), 3, 2);
     
     for ii = 1:length(thk)
         % Lower Limit
-        options.AdditionalText(ii, 1, 1) = sprintf(" [%s,", ...
-            sprintf(options.FormatString(ii, 1), O.thkRange(1, ii)));
+        LimitsText(ii, 1, 1) = sprintf(" %s,", ...
+            sprintf(options.FormatString(ii, 1), O.rangeMin_thk(ii)));
         
-        options.AdditionalText(ii, 2, 1) = sprintf(" [%s - j%s,", ...
-            sprintf(options.FormatString(ii, 2), O.erRange(1, ii)), ...
-            sprintf(options.FormatString(ii, 3), O.erpRange(1, ii)));
+        LimitsText(ii, 2, 1) = sprintf(" [%s - j%s,", ...
+            sprintf(options.FormatString(ii, 2), O.rangeMin_erp(ii)), ...
+            sprintf(options.FormatString(ii, 3), O.rangeMin_erpp(ii)));
         
-        options.AdditionalText(ii, 3, 1) = sprintf(" [%s - j%s,", ...
-            sprintf(options.FormatString(ii, 4), O.erRange(1, ii)), ...
-            sprintf(options.FormatString(ii, 5), O.erpRange(1, ii)));
+        LimitsText(ii, 3, 1) = sprintf(" [%s - j%s,", ...
+            sprintf(options.FormatString(ii, 4), O.rangeMin_urp(ii)), ...
+            sprintf(options.FormatString(ii, 5), O.rangeMin_urpp(ii)));
         
         % Upper Limit
-        options.AdditionalText(ii, 1, 2) = sprintf("  %s]", ...
-            sprintf(options.FormatString(ii, 1), O.thkRange(2, ii)));
+        LimitsText(ii, 1, 2) = sprintf("  %s]", ...
+            sprintf(options.FormatString(ii, 1), O.rangeMax_thk(ii)));
         
-        options.AdditionalText(ii, 2, 2) = sprintf("  %s - j%s]", ...
-            sprintf(options.FormatString(ii, 2), O.erRange(2, ii)), ...
-            sprintf(options.FormatString(ii, 3), O.erpRange(2, ii)));
+        LimitsText(ii, 2, 2) = sprintf("  %s - j%s]", ...
+            sprintf(options.FormatString(ii, 2), O.rangeMax_erp(ii)), ...
+            sprintf(options.FormatString(ii, 3), O.rangeMax_erpp(ii)));
         
-        options.AdditionalText(ii, 3, 2) = sprintf("  %s - j%s]", ...
-            sprintf(options.FormatString(ii, 4), O.erRange(2, ii)), ...
-            sprintf(options.FormatString(ii, 5), O.erpRange(2, ii)));
+        LimitsText(ii, 3, 2) = sprintf("  %s - j%s]", ...
+            sprintf(options.FormatString(ii, 4), O.rangeMax_urp(ii)), ...
+            sprintf(options.FormatString(ii, 5), O.rangeMax_urpp(ii)));
     end
+
+    options.AdditionalText = cat(3, options.AdditionalText, LimitsText);
 end
 
 %% Customize Parameters that are Being Solved
@@ -83,17 +126,25 @@ if ~formatOptions.ShowInitialValues
         formatOptions.SolveParameterFormatString, "%.0sx");
 end
 
-options.FormatString(O.thkLayersToSolve, 1) = compose(...
+options.FormatString(O.layersToSolve_thk, 1) = compose(...
     formatOptions.SolveParameterFormatString, ...
-    options.FormatString(O.thkLayersToSolve, 1));
+    options.FormatString(O.layersToSolve_thk, 1));
 
-options.FormatString(O.erLayersToSolve, 2) = compose(...
+options.FormatString(O.layersToSolve_erp, 2) = compose(...
     formatOptions.SolveParameterFormatString, ...
-    options.FormatString(O.erLayersToSolve, 2));
+    options.FormatString(O.layersToSolve_erp, 2));
 
-options.FormatString(O.erpLayersToSolve, 3) = compose(...
+options.FormatString(O.layersToSolve_erpp, 3) = compose(...
     formatOptions.SolveParameterFormatString, ...
-    options.FormatString(O.erpLayersToSolve, 3));
+    options.FormatString(O.layersToSolve_erpp, 3));
+
+options.FormatString(O.layersToSolve_urp, 4) = compose(...
+    formatOptions.SolveParameterFormatString, ...
+    options.FormatString(O.layersToSolve_urp, 4));
+
+options.FormatString(O.layersToSolve_urpp, 5) = compose(...
+    formatOptions.SolveParameterFormatString, ...
+    options.FormatString(O.layersToSolve_urpp, 5));
 
 %% Create String
 optionsCell = namedargs2cell(options);

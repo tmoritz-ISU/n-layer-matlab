@@ -1,5 +1,5 @@
 % This example file shows how to use nLayerCircularTE to calculate S11 of
-% a rectangular waveguide looking into a multilayer structure.
+% a circular waveguide looking into a multilayer structure.
 %
 % This example mostly shows 1-layer cases and finite conductivity cases.
 % For multilayer cases and frequency dependent cases, see the example for
@@ -8,7 +8,7 @@
 % instead.
 %
 % The basic usage of nLayerCircularTE is as follows (example for ka-band):
-%   NL = nLayerRectangular(numModes, R=5.8);
+%   NL = nLayerRectangular(numModes, waveguideR=5.8);
 %   S11 = NL.calculate(f, er, ur, thk);
 %
 % In the above example, numModes is the number of TE0n modes to consider.
@@ -25,13 +25,17 @@ clear;
 close all;
 
 %% Inputs
-wgR = 5.8;                          % Use ka-band circular waveguide dimensions
-f = linspace(32, 40, 51).';         % Frequencies to calculate (column vector)
-fRes = linspace(32, 40, 2001).';    % Resonant case requires more frequencies
+wgR = 5.8;
 
-numModes = 3;                       % Number of TE0n modes to consider
+% More frequency samples for the resonant case
+f = linspace(32, 40, 51).';
+fRes = linspace(32, 40, 2001).';
 
-convergenceTol = 1e-3;              % Tolerance for convergence (-60 dB)
+% Number of TE0n modes to consider
+numModes = 3;
+
+% Tolerance for convergence (-60 dB)
+convergenceTol = 1e-3;
 
 %% Create nLayer Object
 % Creating the object initially takes a short amount of time (~0.01
@@ -40,11 +44,12 @@ convergenceTol = 1e-3;              % Tolerance for convergence (-60 dB)
 % load it (second line here). See documentation for nLayerCircularTE for
 % more details.
 
-NL = nLayerCircularTE(numModes, R=wgR);     % Create nLayer object.
-% NL = load("nLayer_circularKaBand").NL;    % Optionally load nLayer object from file.
+NL = nLayerCircularTE(numModes, waveguideR=wgR);
+% NL = load("nLayer_circularKaBand").NL;
 
-NL.convergenceAbsTol = convergenceTol;  % Optionally specify tolerance for convergence.
-NL.verbosity = 1;                       % Leave at 0 for no command line output.
+% Optionally, specify convergence tolerance and verbosity
+NL.convergenceAbsTol = convergenceTol;
+NL.verbosity = 1;
 
 %% Calculate structure 1
 % One layer conductor-backed structure (different losses).
@@ -64,7 +69,7 @@ toc;
 
 % Plot
 figure;
-plot(gam1, ".-", "Linewidth", 1);
+plot(gam1, ".-", Linewidth=1);
 hold on;
 title("Case 1");
 zplane([]);
@@ -89,7 +94,7 @@ toc;
 
 % Plot
 figure;
-plot(gam2, ".-", "Linewidth", 1);
+plot(gam2, ".-", Linewidth=1);
 hold on;
 title("Case 2");
 zplane([]);
@@ -114,7 +119,7 @@ toc;
 
 % Plot
 figure;
-plot(gam3, ".-", "Linewidth", 1);
+plot(gam3, ".-", Linewidth=1);
 hold on;
 title("Case 3");
 zplane([]);
@@ -127,9 +132,9 @@ grid on;
 er4 = 4;
 ur4 = [];
 thk4 = [2];
-sigma4 = 10.^linspace(4, 8, 9).';
+sigma4 = 10.^linspace(1, 5, 9).';
 
-NL.printStructure(er3(1, :), ur3, thk3, BackingConductivity=sigma4(1), ...
+NL.printStructure(er4(1, :), ur4, thk4, BackingConductivity=sigma4(1), ...
     Title="Case 4");
 tic;
 gam4 = zeros(length(fRes), length(sigma4));
@@ -142,9 +147,9 @@ toc;
 
 % Plot
 figure;
-plot(gam4, ".-", "Linewidth", 1);
+plot(gam4, ".-", Linewidth=1);
 hold on;
 title("Case 4");
 zplane([]);
-legend(compose("\\sigma = %.1e S/m", abs(sigma4)));
+legend(compose("\\sigma = %.1e S/mm", abs(sigma4)));
 grid on;

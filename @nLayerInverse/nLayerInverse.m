@@ -1,106 +1,111 @@
-classdef nLayerInverse < matlab.mixin.Copyable
+classdef nLayerInverse < matlab.mixin.Copyable & matlab.mixin.SetGetExactNames
     %NLAYERINVERSE Class to perform optimization on nLayerForward objects.
-    % This class serves as an interface definition for all nLayer forward
-    % calculator objects. These objects take in a multilayer structure
-    % definition and output the computed reflection coefficients (or
-    % transmission coefficients). It also contains several useful utility
-    % functions.
+    % This class allows a user to define an nLayer structure on which to
+    % perform curve fitting.
     %
-    % nLayerForward Properties:
-    %   speedOfLight (299.792458) - Speed of light (mm GHz). Must match
-    %       units of distance and frequency used.
-    %   verbosity (0) - A value of 0 should suppress console output.
-    %   checkStructureValues (true) - Flag used in the "verifyStructure"
-    %       function. If true, this function will throw errors if
-    %       non-physical values of er, ur, or thk are passed in.
+    % Example Usage:
+    %   fas
+    %
+    % nLayerInverse Properties:
+    %   verbosity (0) - Verbosity level. Set to 1 to enable the optimizer
+    %       console output.
     %
     % Author: Matt Dvorsky
     
-    properties (GetAccess = public, SetAccess = public)
-        localOptimizerOptions;
-        globalOptimizerOptions;
+    properties (Access=public)
+        layersToSolve_erp(:, 1)  {mustBeInteger, mustBePositive} = [];  % Layer indices to solve for erp.
+        layersToSolve_erpp(:, 1) {mustBeInteger, mustBePositive} = [];  % Layer indices to solve for erpp.
+        layersToSolve_urp(:, 1)  {mustBeInteger, mustBePositive} = [];  % Layer indices to solve for urp.
+        layersToSolve_urpp(:, 1) {mustBeInteger, mustBePositive} = [];  % Layer indices to solve for urpp.
+        layersToSolve_thk(:, 1)  {mustBeInteger, mustBePositive} = [];  % Layer indices to solve for thk.
         
-        useGlobalOptimizer = false;
-        useLocalOptimizer = true;
+        rangeMin_erp(1, :)  {mustBeReal} = 1;       % Minimum erp per layer.
+        rangeMin_erpp(1, :) {mustBeReal} = 0.0001;  % Minimum erpp per layer.
+        rangeMin_urp(1, :)  {mustBeReal} = 1;       % Minimum urp per layer.
+        rangeMin_urpp(1, :) {mustBeReal} = 0;       % Minimum urpp per layer.
+        rangeMin_thk(1, :)  {mustBeReal} = 0;       % Minimum thk per layer.
         
-        default_erRange = [1; 10];
-        default_erpRange = [0.001; 10];
-        default_thkRange = [0.001; 100];
+        rangeMax_erp(1, :)  {mustBeReal} = inf;     % Maximum erp per layer.
+        rangeMax_erpp(1, :) {mustBeReal} = inf;     % Maximum erpp per layer.
+        rangeMax_urp(1, :)  {mustBeReal} = inf;     % Maximum urp per layer.
+        rangeMax_urpp(1, :) {mustBeReal} = inf;     % Maximum urpp per layer.
+        rangeMax_thk(1, :)  {mustBeReal} = inf;     % Maximum thk per layer.
+
+        initialValue_er(1, :) {} = 1 - 0.0001j;     % Structure er values.
+        initialValue_ur(1, :) {} = 1;               % Structure ur values.
+        initialValue_thk(1, :) {mustBeReal} = 0;    % Structure thk values.
+
+        verbosity(1, 1) {mustBeInteger, mustBeNonnegative} = 0; % Verbosity level. Set to 0 for no output.
+
+        useGlobalOptimizer(1, 1) logical = false;   % Whether or not to use global optimizer.
+        useLocalOptimizer(1, 1) logical = true;     % Whether or not to use local optimizer.
+
+        localOptimizerOptions(1, 1) ...                         % Options object for local optimizer.
+            {mustBeA(localOptimizerOptions, "optim.options.SolverOptions")} ...
+            = optimoptions("lsqnonlin", Display="none");
+        globalOptimizerOptions(1, 1) ...                        % Options object for global optimizer.
+            {mustBeA(globalOptimizerOptions, "optim.options.SolverOptions")} ...
+            = optimoptions("surrogateopt", Display="none", PlotFcn="");
+    end
+    properties (GetAccess=public, SetAccess=private)
+        layerCount(1, 1) {mustBeInteger, mustBePositive} = 1;   % Number of layers in the structure.
     end
     
-    properties (GetAccess = public, SetAccess = public)
-        verbosity;
-        
-        layerCount;
-        
-        erLayersToSolve;
-        erpLayersToSolve;
-        thkLayersToSolve;
-        
-        erRange;
-        erpRange;
-        thkRange;
-        
-        erInitialValue;
-        erpInitialValue;
-        thkInitialValue;
-    end
-    
-    %% Function Declarations (implemented in separate files)
-    methods (Access = public)
-        [er, ur, thk, varargout] = solveStructure(O, NL, f, gam);
+    %% Class Functions
+    methods (Access=public)
         setLayerCount(O, layerCount);
         setLayersToSolve(O, options);
         setInitialValues(O, options);
-        [erError, urError, thkError] = computeParameterUncertainty(O, er, ur, thk);
-        [varargout] = printStructureParameters(O, options);
+        setRanges(O, options);
+
+        [varargout] = solveStructure(O, NL, f, gam, options);
+
+        [Uncert] = computeParameterUncertainty(O, NL, f, options);
+        [varargout] = printStructureParameters(O, Parameters, Uncertainty, formatOptions, options);
+        validate(O);
     end
-    
-    methods (Access = private)
-        [er, ur, thk] = extractStructure(O, x, f);
+    methods (Access=private)
         [xGuess, xMin, xMax] = constructInitialValuesAndRanges(O);
+        [er, ur, thk] = extractStructure(O, x, f);
+    end
+    methods (Static, Access=public)
+        [Params, Gamma, Uncert] = solveStructureMultiple(NLsolver, NL, f, gam, options);
+        [Uncert] = computeParameterUncertaintyMultiple(NLsolver, NL, f, options);
+    end
+    methods (Static, Access=private)
+        [gamError, gamErrorComplex] = calculateError(...
+            NLsolver, x, NL, f, gamActual, options);
     end
     
-    %% Class constructor
+    %% Class Constructor
     methods
-        function O = nLayerInverse(numLayers, options)
-            %NLAYERRECTANGULAR Construct an instance of this class.
+        function O = nLayerInverse(numLayers, classProperties)
+            %NLAYERINVERSE Construct an instance of this class.
             % Example Usage:
-            %   NLsolver = nLayerInverse();
+            %   See example usage in main class documentation. Note that
+            %   all public class properties can be specified as a named
+            %   argument to the constructor (e.g., as "verbosity=1").
             %
             % Inputs:
-            %   maxM - .
-            % Named Arguments:
-            %   LocalOptimizerOptions - .
+            %   numLayers - Number of structure layers.
             
             arguments
                 numLayers(1, 1) {mustBeInteger, mustBePositive};
-                options.Verbosity = 0;
-                options.LocalOptimizerOptions;
-                options.GlobalOptimizerOptions;
+            end
+            arguments (Repeating)
+                classProperties;
+            end
+
+            % Set Class Parameter Values
+            if mod(numel(classProperties), 2) ~= 0
+                error("Parameter and value arguments must come in pairs.");
+            end
+            for ii = 1:2:numel(classProperties)
+                set(O, classProperties{ii}, classProperties{ii + 1});
             end
             
-            %% Set Class Parameter Values
-            O.verbosity = options.Verbosity;
-            
-            %% Set Default Optimizer Options
-            if isfield(options, "LocalOptimizerOptions")
-                O.localOptimizerOptions = options.LocalOptimizerOptions;
-            else
-                O.localOptimizerOptions = optimoptions("lsqnonlin", ...
-                    Display="none");
-            end
-            
-            if isfield(options, "GlobalOptimizerOptions")
-                O.globalOptimizerOptions = options.GlobalOptimizerOptions;
-            else
-                O.globalOptimizerOptions = optimoptions("surrogateopt", ...
-                    Display="none", PlotFcn="");
-            end
-            
-            %% Set Number of Layers
+            % Set Number of Layers
             O.setLayerCount(numLayers);
-            
         end
     end
     
