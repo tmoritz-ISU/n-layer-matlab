@@ -8,6 +8,7 @@ function [krcNodes, Ah_weights, Ae_weights] = computeAhat(O)
 % Inputs:
 %   kRhoP - A vector of kRhoP coordinates (coordinate transform of kRho).
 %       Values should be in the interval [0, 1].
+%
 % Outputs:
 %   AhHat, AeHat - Matrices computed as a function of kRhoP that can be
 %       used to compute the matrix A (i.e., Ah + Ae). The size will be
@@ -20,17 +21,23 @@ arguments
 end
 
 %% Set Scale Factors and Integral Point Counts
-k0MaxAll = [O.modeStructs.MaxOperatingWavenumber];
-k0Max = max(k0MaxAll([O.modeStructs.IsExcitationMode]));
+% k0MaxAll = [O.modeStructs.MaxOperatingWavenumber];
+% k0Max = max(k0MaxAll([O.modeStructs.IsExcitationMode]));
+k0Max = max(O.frequencyRange) * 2*pi ./ O.speedOfLight;
 
 L = (4*pi) ./ max([O.modeStructs.ApertureWidth]);
 Lc = k0Max;
 Lch = Lc;
 Lcw = 10*Lc;
 
-Nm = 200;
-Nrho = 8192;
-Nphi = 64;
+Nm = 100;
+Nrho = 1*8192;
+Nphi = 1*64;
+
+% Nm = O.integral_pointsKrc;
+% Nrho = O.integral_pointsKr;
+% Nphi = O.integral_points;
+
 
 % Dimension Assignment:
 %   1: moment index
@@ -60,10 +67,16 @@ weights_kphi = 4*weights_kphi;
 %     weights_kphi = 0.5 * cat(5, weights_kphi, flip(weights_kphi));
 % end
 
-if ~any(strcmp([O.modeStructs.SymmetryAxial], "None"))
-    kphi = 0;
-    weights_kphi = 2*pi;
-end
+% kphi = cat(5, kphi, kphi + 0.5*pi);
+% weights_kphi = 0.5 * cat(5, weights_kphi, weights_kphi);
+% 
+% kphi = cat(5, kphi, -flip(kphi));
+% weights_kphi = 0.5 * cat(5, weights_kphi, flip(weights_kphi));
+
+% if ~any(strcmp([O.modeStructs.SymmetryAxial], "None"))
+%     kphi = 0;
+%     weights_kphi = 2*pi;
+% end
 
 kx = krc .* cos(kphi);
 ky = krc .* sin(kphi);
@@ -78,8 +91,16 @@ for ii = 1:numel(O.modeStructs)
         + O.modeStructs(ii).EySpec(kx, ky, krc, kphi);
 end
 
-modeSpecExn = reshape(modeSpecExm, size(modeSpecExm, [1, 3, 2, 4, 5]));
-modeSpecEyn = reshape(modeSpecEym, size(modeSpecEym, [1, 3, 2, 4, 5]));
+offsetX(1, :) = [O.modeStructs.OffsetX];
+offsetY(1, :) = [O.modeStructs.OffsetY];
+modeSpecExm = modeSpecExm .* exp(-1j .* offsetX .* kx) .* exp(-1j .* offsetY .* ky);
+modeSpecEym = modeSpecEym .* exp(-1j .* offsetX .* kx) .* exp(-1j .* offsetY .* ky);
+
+modeSpecExn = circshift(reshape(modeSpecExm, size(modeSpecExm, [1, 3, 2, 4, 5])), 2*Nphi, 5);
+modeSpecEyn = circshift(reshape(modeSpecEym, size(modeSpecEym, [1, 3, 2, 4, 5])), 2*Nphi, 5);
+
+%% Compute Cmn
+Exy = eye(size(modeSpecExm, 2));
 
 %% Compute Moments
 cosPhi = cos(kphi);
@@ -107,8 +128,8 @@ for ii = 1:size(Ah_weights(:, :), 2)
     [~, Ae_weights(:, ii)] = fejer2_halfOpen(Nm, Lc, ...
         WeightingMoments=Ae_moments(:, ii));
 end
-Ah_weights = Ah_weights ./ sqrt(1 + (krcNodes).^2);
-Ae_weights = Ae_weights .* sqrt(1 + (krcNodes).^2);
+Ah_weights = Ah_weights ./ (1 + (krcNodes).^1);
+Ae_weights = Ae_weights .* (1 + (krcNodes).^1);
 
 end
 

@@ -67,7 +67,7 @@ elseif size(options.FormatString, 2) ~= 5
 end
 
 %% Add Uncertainty Labels
-options.AdditionalText = strings(0);
+options.AdditionalText = strings(numel(thk), 3, 0);
 if ~isempty(fieldnames(Uncertainty))
     UncertaintyText = strings(length(thk), 3, 1);
     
@@ -148,7 +148,7 @@ options.FormatString(O.layersToSolve_urpp, 5) = compose(...
 
 %% Create String
 optionsCell = namedargs2cell(options);
-[varargout{1:nargout}] = nLayerForward.printStructure(er, ur, thk, ...
+[varargout{1:nargout}] = nLayer.printStructure(er, ur, thk, ...
     optionsCell{1:end});
 
 end

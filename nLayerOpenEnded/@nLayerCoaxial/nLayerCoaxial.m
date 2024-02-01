@@ -1,26 +1,27 @@
-classdef nLayerRectangular < nLayerOpenEnded
-    %NLAYERRECTANGULAR Implementation of nLayerForward for rectangular waveguides.
+classdef nLayerCoaxial < nLayerOpenEnded
+    %NLAYERCOAXIAL Implementation of nLayerForward for coaxial waveguides.
     % This class can be used to calculate the reflection coefficient seen
     % by a rectangular waveguide looking into a multilayer structure. Note
     % that the units of all parameters should match that of the speed of
     % light specified by the speedOfLight parameter (default is mm GHz).
     %
     % Example Usage:
-    %   NL = nLayerRectangular(maxM, maxN, waveguideBand="X");
-    %   NL = nLayerRectangular(maxM, maxN, waveguideA=7.112, waveguideB=3.556);
-    %   NL = nLayerRectangular(maxM, maxN, distanceUnitScale=1, ...
-    %       waveguideA=7.112e-3, waveguideB=3.556e-3);
-    %   NL = nLayerRectangular(maxM, maxN, waveguideBand="Ka", ...
+    %   NL = nLayerCoaxial(maxM, maxN, waveguideBand="N");
+    %   NL = nLayerCoaxial(maxM, maxN, waveguideRi=0.44, waveguideRi=1);
+    %   NL = nLayerCoaxial(maxM, maxN, distanceUnitScale=1, ...
+    %       waveguideRi=0.44e-3, waveguideRi=1e-3);
+    %   NL = nLayerCoaxial(maxM, maxN, waveguideBand="K", ...
     %       prop1=val1, prop2=val2, ...);
     %
     %   gam = NL.calculate(f, er, ur, thk);
     %   gam = NL.calculate(f, er, [], thk);
     %   gam = NL.calculate(f, [], ur, thk);
     %   gam = NL.calculate(f, er, [], thk, BackingConductivity=sigma);
+    %   gam = NL.calculate(f, er, [], thk, BackingConductivity=-inf);   % PMC 
     %
-    % nLayerRectangular Properties:
-    %   waveguideA - Waveguide broad dimension.
-    %   waveguideB - Waveguide narrow dimension.
+    % nLayerCoaxial Properties:
+    %   waveguideRi - Coaxial inner radius.
+    %   waveguideRo - Coaxial outer radius.
     %   speedOfLight (299.792458) - Speed of light (default is mm GHz).
     %   verbosity (0) - Verbosity level. Set to 1 for basic command line
     %       output. Set to 2 for a per-frequency output.
@@ -33,18 +34,18 @@ classdef nLayerRectangular < nLayerOpenEnded
     % Author: Matt Dvorsky
 
     properties (Access=public, AbortSet)
-        waveguideBand(1, 1) rectangularWaveguideBand;       % Waveguide band.
+        waveguideBand(1, 1) coaxialConnectorType;       % Waveguide band.
 
         maxModeIndexM(1, 1) {mustBeInteger, mustBeNonnegative} = 1; % Maximum value of 'm' for considered TEmn or TMmn modes.
         maxModeIndexN(1, 1) {mustBeInteger, mustBeNonnegative} = 0; % Maximum value of 'n' for considered TEmn or TMmn modes.
     end
     properties (Dependent, Access=public, AbortSet)
-        waveguideA(1, 1) {mustBePositive, mustBeFinite};    % Waveguide broad dimension.
-        waveguideB(1, 1) {mustBePositive, mustBeFinite};    % Waveguide narrow dimension.
+        waveguideRi(1, 1) {mustBePositive, mustBeFinite};   % Coax inner radius.
+        waveguideRo(1, 1) {mustBePositive, mustBeFinite};   % Coax outer radius.
     end
     properties (Access=private)
-        waveguideA_custom(1, 1);
-        waveguideB_custom(1, 1);
+        waveguideRi_custom(1, 1);
+        waveguideRo_custom(1, 1);
     end
 
     %% Class Functions
@@ -54,8 +55,8 @@ classdef nLayerRectangular < nLayerOpenEnded
 
     %% Class Constructor
     methods
-        function O = nLayerRectangular(maxIndexM, maxIndexN, classProperties)
-            %NLAYERRECTANGULAR Construct an instance of this class.
+        function O = nLayerCoaxial(maxIndexM, maxIndexN, classProperties)
+            %NLAYERCOAXIAL Construct an instance of this class.
             % Inputs:
             %   maxIndexM - Highest index 'm' of TEmn and TMmn modes to consider.
             %   maxIndexN - Highest index 'n' of TEmn and TMmn modes to consider.
@@ -63,10 +64,10 @@ classdef nLayerRectangular < nLayerOpenEnded
             arguments
                 maxIndexM(1, 1) {mustBeInteger, mustBeNonnegative};
                 maxIndexN(1, 1) {mustBeInteger, mustBeNonnegative};
+                classProperties.?nLayerCoaxial;
             end
-            arguments
-                classProperties.?nLayerRectangular;
-            end
+
+            O.modeSymmetryAxial = "TM";
 
             % Set Class Parameter Values
             propPairs = namedargs2cell(classProperties);
@@ -77,8 +78,13 @@ classdef nLayerRectangular < nLayerOpenEnded
             O.maxModeIndexM = maxIndexM;
             O.maxModeIndexN = maxIndexN;
 
-            O.frequencyRange = [1.01, 1.99] ...
-                .* (0.5 * O.speedOfLight ./ O.waveguideA);
+            rRatio = O.waveguideRi ./ O.waveguideRo;
+            switch O.modeSymmetryAxial
+                case "TM"
+                    O.frequencyRange = [0, 0.99] ./ (2*pi) ...
+                        .* (2.4048 * O.speedOfLight ./ O.waveguideRo ...
+                        ./ (1 - rRatio));
+            end
 
             if O.numModes > 0
                 O.excitationModeIndices = 1;
@@ -93,14 +99,14 @@ classdef nLayerRectangular < nLayerOpenEnded
             O.waveguideBand = newBand;
             O.regenerateModeStructs();
         end
-        function set.waveguideA(O, newA)
-            O.waveguideA_custom = newA;
-            O.waveguideB_custom = O.waveguideB;
+        function set.waveguideRi(O, newA)
+            O.waveguideRi_custom = newA;
+            O.waveguideRo_custom = O.waveguideRo;
             O.waveguideBand = "Custom";
         end
-        function set.waveguideB(O, newB)
-            O.waveguideB_custom = newB;
-            O.waveguideA_custom = O.waveguideA;
+        function set.waveguideRo(O, newB)
+            O.waveguideRo_custom = newB;
+            O.waveguideRi_custom = O.waveguideRi;
             O.waveguideBand = "Custom";
         end
 
@@ -116,19 +122,21 @@ classdef nLayerRectangular < nLayerOpenEnded
 
     %% Class Getters
     methods
-        function [a] = get.waveguideA(O)
+        function [ri] = get.waveguideRi(O)
             if O.waveguideBand == "Custom"
-                a = O.waveguideA_custom;
+                ri = O.waveguideRi_custom;
                 return;
             end
-            [a, ~] = O.waveguideBand.getDimensions(O.distanceUnitScale);
+            [di, ~] = O.waveguideBand.getDimensions(O.distanceUnitScale);
+            ri = 0.5 * di;
         end
-        function [b] = get.waveguideB(O)
+        function [ro] = get.waveguideRo(O)
             if O.waveguideBand == "Custom"
-                b = O.waveguideB_custom;
+                ro = O.waveguideRo_custom;
                 return;
             end
-            [~, b] = O.waveguideBand.getDimensions(O.distanceUnitScale);
+            [~, do] = O.waveguideBand.getDimensions(O.distanceUnitScale);
+            ro = 0.5 * do;
         end
     end
 

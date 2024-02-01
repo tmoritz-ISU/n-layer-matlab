@@ -1,17 +1,16 @@
-classdef nLayerCircularTE_old < nLayerForward
-    %NLAYERCIRCULARTE Implementation of nLayerForward for circular waveguides TE0n modes.
+classdef nLayerRectangular_old < nLayerForward
+    %NLAYERRECTANGULAR Implementation of nLayerForward for rectangular waveguides.
     % This class can be used to calculate the reflection coefficient seen
-    % by a circular waveguide looking into a multilayer structure, in
-    % addition to the full mode S-parameter matrix. Note that the units of
-    % all parameters should match that of the speed of light specified by
-    % the speedOfLight parameter (default is mm GHz).
+    % by a rectangular waveguide looking into a multilayer structure. Note
+    % that the units of all parameters should match that of the speed of
+    % light specified by the speedOfLight parameter (default is mm GHz).
     %
     % Example Usage:
-    %   NL = nLayerCircularTE(numModes, waveguideR=5.8);
-    %   NL = nLayerCircularTE(numModes, waveguideR=5.8, verbosity=1);
-    %   NL = nLayerCircularTE(numModes, waveguideR=5.8e-3, ...
-    %       speedOfLight=299.79e6);
-    %   NL = nLayerCircularTE(maxM, maxN, waveguideBand="ka", ...
+    %   NL = nLayerRectangular(maxM, maxN, waveguideBand="x");
+    %   NL = nLayerRectangular(maxM, maxN, waveguideA=7.112, waveguideB=3.556);
+    %   NL = nLayerRectangular(maxM, maxN, speedOfLight=299.79e6, ...
+    %       waveguideA=7.112e-3, waveguideB=3.556e-3);
+    %   NL = nLayerRectangular(maxM, maxN, waveguideBand="ka", ...
     %       prop1=val1, prop2=val2, ...);
     %
     %   gam = NL.calculate(f, er, ur, thk);
@@ -19,13 +18,17 @@ classdef nLayerCircularTE_old < nLayerForward
     %   gam = NL.calculate(f, [], ur, thk);
     %   gam = NL.calculate(f, er, [], thk, BackingConductivity=sigma);
     %
-    % nLayerCircularTE Properties:
-    %   waveguideR - Waveguide radius.
+    % nLayerRectangular Properties:
+    %   waveguideA - Waveguide broad dimension.
+    %   waveguideB - Waveguide narrow dimension.
     %   speedOfLight (299.792458) - Speed of light (default is mm GHz).
-    %   modesTE - List of TE0n modes to consider (in rows of [n]). The
+    %   modesTE - List of TEmn modes to consider (in rows of [m, n]). The
     %       ports for the S-parameters will be in the order specified by
-    %       modesTE.
-    %   numModes (read-only) - Number of TE0n modes to consider.
+    %       modesTE, followed by modesTM.
+    %   modesTM (read-only) - List of TMmn modes to consider (in rows of 
+    %       [m, n]). This is automatically generated from modesTE. It will
+    %       be in the same order after removing invalid TM modes.
+    %   numModes (read-only) - Number of modes (numTE + numTM) to consider.
     %   verbosity (0) - Verbosity level. Set to 1 for basic command line
     %       output. Set to 2 for a per-frequency output.
     %   convergenceAbsTol (0.001) - Default tolerance for reflection
@@ -36,6 +39,8 @@ classdef nLayerCircularTE_old < nLayerForward
     %       above ~0.1. Raise to lower this loss tangent threshold.
     %   interpolationPoints_kRho (2^12) - Number of points to use for the
     %       interpolation lookup table along kRho.
+    %   integralPoints_kPhi (50) - Number of points to use to integrate
+    %       along kPhi.
     %   integralInitialSegmentCount (9) - Initial number of segments along
     %       kRho used in the adaptive integration routine. Must be an odd
     %       integer.
@@ -48,53 +53,58 @@ classdef nLayerCircularTE_old < nLayerForward
     % the member function "recomputeInterpolants()" must be called. This
     % function is automatically called upon construction of the object.
     % For Example:
-    %   NL = nLayerCircularTE(numModes, waveguideR=wgR);
-    %   NL.modesTE = [1; 2; 3; 4];
+    %   NL = nLayerRectangular(maxM, maxN, Band="x");
+    %   NL.modesTE = [1, 0; 1, 2; 3, 0; 3, 2];
     %   NL.integralPointsFixed_kRho = 100;
     %   NL.recomputeInterpolants(); % This line is necessary in this case.
     %   [...] = NL.calculate(...);
     %
     % List of the critical parameters referenced above:
-    %   waveguideR;
+    %   waveguideA;
+    %   waveguideB;
     %   speedOfLight;
     %   modesTE;
     %   interpolationPoints_kRho;
     %   integralPointsFixed_kRho;
+    %   integralPoints_kPhi;
     %   integralInitialSegmentCount;
     %
     % Any of the above properties can also be directly specified in the
-    % class constructor: NL = nLayerCircularTE(..., prop=val, ...).
+    % class constructor: NL = nLayerRectangular(..., prop=val, ...).
     % Constructing using this method avoids the requirement of having to
     % call "recomputeInterpolants()" manually.
     %
     % Author: Matt Dvorsky
 
-    properties (Access=public)
-        waveguideR(1, 1) {mustBePositive} = 1;      % Waveguide radius.
-        waveguideEr(1, 1) {nLayer.mustBeValidErUr} = 1;  % Waveguide fill er.
-        waveguideUr(1, 1) {nLayer.mustBeValidErUr} = 1;  % Waveguide fill ur.
-        modesTE(:, 1) {mustBeInteger, mustBeNonnegative};   % List of TE0n modes (vector of n).
-        convergenceAbsTol(1, 1) {mustBePositive} = 0.001;   % Convergence tolerance value.
-
+    properties (GetAccess=public, SetAccess=public)
+        waveguideA(1, 1) {mustBePositive} = 1;              % Waveguide broad dimension.
+        waveguideB(1, 1) {mustBePositive} = 0.5;            % Waveguide narrow dimension.
+        modesTE(:, 2) {mustBeInteger, mustBeNonnegative};   % List of TEmn modes in rows of [m, n].
         interpolationPoints_kRho(1, 1) {mustBePositive, mustBeInteger} = 2^12;  % Number of points for lookup table along kRho.
         integralPointsFixed_kRho(1, 1) {mustBePositive, mustBeInteger} = 301;   % Number of points for fixed point integral along kRho.
-        integralInitialSegmentCount(1, 1) {nLayer.mustBePositiveOddInteger} = 9; % Number of segments to start with in adaptive integral.
+        integralPoints_kPhi(1, 1) {mustBePositive, mustBeInteger} = 50;         % Number of points for fixed point integral along kPhi.
+        integralInitialSegmentCount(1, 1) {mustBePositive, mustBeInteger} = 9;  % Number of segments to start with in adaptive integral.
+        convergenceAbsTol(1, 1) {mustBePositive} = 0.001;                       % Convergence tolerance value.
     end
     properties (GetAccess=public, SetAccess=private)
-        numModes;           % Number of modes considered (of form TE0n).
-        modeCutoffs;        % Cutoff wavenumbers of TE0n modes.
+        numModes;       % Number of modes considered (TE + TM).
+        modesTM;        % List of TMmn modes in rows of [m, n].
+        waveguideBand = "";     % Waveguide band identifier.
     end
     properties (Access=private)
         integralScaleFactor;    % Scale factor for change of varibles from kRho [0, inf) to kRhoP [0, 1].
 
-        table_AhHat;        % Interpolation table for AhHat(kRhoP).
+        table_AheHat;       % Interpolation tables for AhHat(kRhoP) and AeHat(kRhoP).
 
         fixed_kRho;         % Fixed-point integral coordindates kRho.
         fixed_AhHat;        % Fixed-point integral weights for AhHat(kRhoP).
+        fixed_AeHat;        % Fixed-point integral weights for AeHat(kRhoP).
         fixed_errorAhHat;   % Fixed-point error weights for AhHat(kRhoP).
+        fixed_errorAeHat;   % Fixed-point error weights for AeHat(kRhoP).
 
         init_kRho;      % First pass integral coordindates kRho.
         init_AhHat;     % First pass preinterpolated AhHat(kRhoP).
+        init_AeHat;     % First pass preinterpolated AeHat(kRhoP).
     end
 
     %% Class Functions
@@ -103,7 +113,10 @@ classdef nLayerCircularTE_old < nLayerForward
     end
     methods (Access=public)
         [outputLabels] = getOutputLabels(O);
-        setWaveguideDimensions(O, waveguideA, waveguideB);
+
+        [modesTE, modesTM] = setModes(O, maxM, maxN);
+        [waveguideA, waveguideB] = setWaveguideBand(O, band, options);
+
         recomputeInterpolants(O);
     end
     methods (Access=private)
@@ -111,27 +124,29 @@ classdef nLayerCircularTE_old < nLayerForward
         [B] = computeB(O);
         [kA, kB] = computeK(O, f);
 
-        [AhHat] = computeAhat(O, kRhoP);
+        [AhHat, AeHat] = computeAhat(O, kRhoP);
         [Ahat] = integrandAhat(O, kRhoP, k0, er, ur, thk);
     end
     methods (Static, Access=public)
-        [Gamma0h] = computeGamma0(kRho, k0, er, ur, thk);
+        [Gamma0h, Gamma0e] = computeGamma0(kRho, k0, er, ur, thk);
     end
 
     %% Class constructor
     methods
-        function O = nLayerCircularTE_old(numModes, classProperties)
-            %NLAYERCIRCULARTE Construct an instance of this class.
+        function O = nLayerRectangular_old(maxM, maxN, classProperties)
+            %NLAYERRECTANGULAR Construct an instance of this class.
             % Example Usage:
             %   See example usage in main class documentation. Note that
             %   all public class properties can be specified as a named
             %   argument to the constructor (e.g., as "verbosity=1").
             %
             % Inputs:
-            %   numModes - Number of TE0n modes to consider.
+            %   maxM - Highest index m of TEmn and TMmn modes to consider.
+            %   maxN - Highest index n of TEmn and TMmn modes to consider.
 
             arguments
-                numModes(1, 1) {mustBeInteger, mustBePositive};
+                maxM(1, 1) {mustBeInteger, mustBePositive};
+                maxN(1, 1) {mustBeInteger, mustBeNonnegative};
             end
             arguments (Repeating)
                 classProperties;
@@ -142,11 +157,15 @@ classdef nLayerCircularTE_old < nLayerForward
                 error("Parameter and value arguments must come in pairs.");
             end
             for ii = 1:2:numel(classProperties)
-                set(O, classProperties{ii}, classProperties{ii + 1});
+                O.(classProperties{ii}) = classProperties{ii + 1};
             end
 
             if isempty(O.modesTE)
-                O.modesTE = (1:numModes).';
+                O.setModes(maxM, maxN);
+            end
+
+            if strlength(O.waveguideBand) > 0
+                O.setWaveguideBand(O.waveguideBand);
             end
 
             O.recomputeInterpolants();
@@ -154,5 +173,4 @@ classdef nLayerCircularTE_old < nLayerForward
     end
 
 end
-
 
