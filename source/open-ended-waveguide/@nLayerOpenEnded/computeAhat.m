@@ -1,9 +1,10 @@
-function [krcNodes, Ah_weights, Ae_weights] = computeAhat(O)
+function [krcNodes, Ah_weights, Ae_weights] = computeAhat(self)
 %Computes the matrices AhHat(kRho) and AeHat(kRho).
 % This function ...
 %
 % Example Usage:
-%   [AhHat, AeHat] = O.computeAhat(kRhoP);
+%   [AhHat, AeHat] = self.computeAhat(kRhoP);
+%
 %
 % Inputs:
 %   kRhoP - A vector of kRhoP coordinates (coordinate transform of kRho).
@@ -12,12 +13,12 @@ function [krcNodes, Ah_weights, Ae_weights] = computeAhat(O)
 % Outputs:
 %   AhHat, AeHat - Matrices computed as a function of kRhoP that can be
 %       used to compute the matrix A (i.e., Ah + Ae). The size will be
-%       numel(kRhoP) by O.numModes by O.numModes.
+%       numel(kRhoP) by self.numModes by self.numModes.
 %
 % Author: Matt Dvorsky
 
 arguments
-    O;
+    self nLayerOpenEnded;
 end
 
 % Dimension Assignment:
@@ -27,21 +28,45 @@ end
 %   4: kr
 %   5: kphi
 
+%% Contour Paths
+% The diagram belows shows the complex contour path used here. The contour
+% path is broken up into 5 separate paths, each one integrated separately.
+% Although it looks like paths 1 and 2 can be a single path, extra points
+% are needed near the origin to account for poles near the origin, which
+% can occur in some structures. The easiest way to do this is to split the
+% path into two segments, so that segment 1 can have many points.
+%
+%
+%     Im{r}
+%       ^
+%       |         Countour Path (3)
+% Lch-> |    ============================
+%       |   /                            \
+%       |  / (1,2)                    (4) \
+%       | /                                \      (5)
+%-------+-----------------------------------+=============...-> Re{r}
+%       |      x   x   x   x   x           Lcw      
+%       |   x    Poles of Gam(r)
+%       |  x
+%       |  x
+%
+
+
 %% Set Scale Factors and Integral Point Counts
-k0Max = max(O.frequencyRange) * 2*pi ./ O.speedOfLight;
+k0Max = max(self.frequencyRange) * 2*pi ./ self.speedOfLight;
 
 % L = (4*pi) ./ max([O.modeStructs.ApertureWidth]);
 Lc = k0Max;
 Lch = 0.5*Lc;
 Lcw = 10*Lc;
-LcFinal = 200*Lc;
+LcFinal = 10.1*Lc;
 
 krcWaypoints = {0, 0.05*Lch*(1 + 1j), Lch*(1 + 1j), (Lcw + Lch*1j), Lcw + Lch, LcFinal};
 a = krcWaypoints(1:end-1);
 b = krcWaypoints(2:end);
 
-Nm = O.integral_pointsKrc;
-Nrho = O.integral_pointsKr;
+Nm = self.integral_pointsKrc;
+Nrho = self.integral_pointsKr;
 
 Nphi = 4*64;
 
@@ -102,13 +127,13 @@ for ii = 1:numel(krc)
     ky = krc{ii} .* sin(kphi);
     
     % Compute Mode Spectrums
-    modeSpecWhm = zeros(1, O.numModes, 1, numel(krc{ii}), numel(kphi));
-    modeSpecWem = zeros(1, O.numModes, 1, numel(krc{ii}), numel(kphi));
-    for mm = 1:O.numModes
+    modeSpecWhm = zeros(1, self.numModes, 1, numel(krc{ii}), numel(kphi));
+    modeSpecWem = zeros(1, self.numModes, 1, numel(krc{ii}), numel(kphi));
+    for mm = 1:self.numModes
         modeSpecWhm(1, mm, 1, :, :) = zeros(size(kx)) ...
-            + O.waveguideModes(mm).WhSpec(kx, ky, krc{ii}, kphi);
+            + self.waveguideModes(mm).WhSpec(kx, ky, krc{ii}, kphi);
         modeSpecWem(1, mm, 1, :, :) = zeros(size(kx)) ...
-            + O.waveguideModes(mm).WeSpec(kx, ky, krc{ii}, kphi);
+            + self.waveguideModes(mm).WeSpec(kx, ky, krc{ii}, kphi);
     end
     
     modeSpecWhn = reshape(modeSpecWhm, size(modeSpecWhm, [1, 3, 2, 4, 5]));

@@ -1,12 +1,26 @@
-function [modeStruct] = getCircularModeStruct(m, n, wgR, TE_TM, isRotated, options)
-%GETCIRCULARMODESTRUCT Get function object defining waveguide spectrums.
-% This function returns a modeStruct for the circular waveguide modes.
+function [mode] = getCircularMode(m, n, wgR, TE_TM, isRotated)
+%Get "waveguideMode" object for specific circular waveguide mode.
+% This function returns a "waveguideMode" for a specific waveguide mode.
 %
-% If TE mode, the the x-axis will be PEC, and the y-axis will be the same
-% if "m" is even. For TM modes the the x-axis will be PMC, and the y-axis
-% will be the same if "m" is even.
+% For TE modes, the the x-axis will have PEC symmetry, and the y-axis will
+% have the same if "m" is even. For TM modes, the the x-axis will have PMC
+% symmetry, and the y-axis will have the same if "m" is even. If
+% "isRotated" is true, then PMC and PEC symmetries will flip for all
+% modes.
 %
-% If "isRotated" is true, then PMC and PEC will flip for all modes.
+% Example Usage:
+%   [mode] = getCircularMode(m, n, wgR, "TE", false);
+%   [mode] = getCircularMode(m, n, wgR, "TE", true);
+%   [mode] = getCircularMode(m, n, wgR, "TM", false);
+%   [mode] = getCircularMode(m, n, wgR, "TM", true);
+%
+%
+% Inputs:
+%   m - Scalar value of "m" the returned TEmn or TMmn mode.
+%   n - Scalar value of "n" the returned TEmn or TMmn mode.
+%   wgR - Circular waveguide radius.
+%   TE_TM - String containing "TE" or "TM".
+%   isRotated - Whether or not to swap PEC/PMC symmetries, see above.
 %
 % Author: Matt Dvorsky
 
@@ -16,8 +30,6 @@ arguments
     wgR(1, 1) {mustBePositive};
     TE_TM(1, 1) string {mustBeMember(TE_TM, ["TE", "TM"])};
     isRotated(1, 1) logical;
-
-    options.kc {mustBeScalarOrEmpty} = [];
 end
 
 %% Check Inputs
@@ -27,15 +39,10 @@ if isRotated && (m == 0)
 end
 
 %% Calculate Mode Cutoff
-if isempty(options.kc)
-    if strcmp(TE_TM, "TE")
-        kcAll = besseljPrimeZeros(m, 1:n) ./ wgR;
-    else
-        kcAll = besseljZeros(m, 1:n) ./ wgR;
-    end
-    kc = kcAll(end);
+if strcmp(TE_TM, "TE")
+    kc = besseljPrimeZeros(m, n) ./ wgR;
 else
-    kc = options.kc;
+    kc = besseljZeros(m, n) ./ wgR;
 end
 
 %% Define Weighting Functions
@@ -96,7 +103,7 @@ if m == 0
 end
 
 %% Create Mode Struct
-modeStruct = nLayer.waveguideMode(...
+mode = waveguideMode(...
     modeLabel=sprintf("%s_{%d,%d}", TE_TM, m, n), ...
     modeType=TE_TM, ...
     WhSpec=WhSpec, ...
