@@ -1,4 +1,4 @@
-classdef nLayerFilledRectangular < nLayerForward
+classdef nLayerFilledRectangular_old < nLayerForward
     %Implementation of nLayerForward for filled rectangular waveguides.
     % This class can be used to calculate the reflection/transmission
     % coefficients of a rectangular waveguide filled with a multilayer
@@ -47,7 +47,7 @@ classdef nLayerFilledRectangular < nLayerForward
 
     %% Class constructor
     methods
-        function O = nLayerFilledRectangular(modeTE_m, modeTE_n, classProperties)
+        function O = nLayerFilledRectangular_old(modeTE_m, modeTE_n, classProperties)
             %NLAYERFILLEDRECTANGULAR Construct an instance of this class.
             % Example Usage:
             %   See example usage in main class documentation. Note that
