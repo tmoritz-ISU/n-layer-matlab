@@ -1,6 +1,23 @@
 classdef nLayerFilledRectangular < nLayerFilled
-    %UNTITLED5 Summary of this class goes here
-    %   Detailed explanation goes here
+    %Implementation of nLayerFilled for filled rectangular waveguides.
+    %   This class can be used to calculate reflection and transmission
+    %   coefficients seen by a two-port filled rectangular waveguide when
+    %   filled with a multi-layered structure. Note the units of all
+    %   parameters should match that of the speed of light specified in
+    %   "distanceUnitScale" and "frequencyUnitScale" parameters (defaults
+    %   to mm and GHz), both of which can be set in the constructor.
+    %
+    % Example Usage:
+    %   NL = nLayerFilledRectangular(modeIndexM, modeIndexN, waveguideBand="X");
+    %   NL = nLayerFilledRectangular(modeIndexM, modeIndexN, waveguideA=7.112, waveguideB=3.556);
+    %   NL = nLayerFilledRectangular(modeIndexM, modeIndexN, distanceUnitScale=1, ...
+    %       waveguideA=7.112e-3, waveguideB=3.556e-3);
+    %   NL = nLayerFilledRectangular(modeIndexM, modeIndexN, waveguideBand="Ka", ...
+    %       prop1=val1, prop2=val2, ...);
+    %
+    %   Smn = NL.calculate(f, er, ur, thk);
+    %   Smn = NL.calculate(f, er, {}, thk);
+    %   Smn = NL.calculate(f, {}, ur, thk);
 
     properties
         waveguideBand(1,1) nLayer.rectangularWaveguideBand; %Waveguide band.
