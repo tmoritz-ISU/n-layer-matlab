@@ -88,8 +88,6 @@ classdef nLayerFilledRectangular < nLayerFilled
         function set.modeIndexN(self, newIndexN)
             self.modeIndexN = newIndexN;
         end
-
-
     end
 
     %% Class Getters

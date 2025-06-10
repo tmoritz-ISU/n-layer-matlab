@@ -11,7 +11,6 @@ function [Smn] = calculate(self,f,er,ur,thk)
 %   Smn = NL.calculate(f, {er1,er2}, {}, {thk1,thk2});
 %   Smn = NL.calculate(f, {}, ur, thk);
 %
-%
 % Inputs:
 %   f - Array of frequencies. Must have compatible size with each layer of
 %       "er" and "ur", but this is not checked.
@@ -43,14 +42,14 @@ end
     CheckStructureValues=self.checkStructureValues);
 
 %% Constants Inside Each Waveguide
-k0 = 2*pi*f/self.speedOfLight
+k0 = 2*pi*f/self.speedOfLight;
 k1 = k0.*sqrt(self.waveguidePort1er.*self.waveguidePort1ur); %k inside WG 1
-kc1 = self.mode_kc0./(sqrt(self.waveguidePort1er.*self.waveguidePort1ur)) %cutoff wavenumber in WG 1
+kc1 = self.mode_kc0./(sqrt(self.waveguidePort1er.*self.waveguidePort1ur)); %cutoff wavenumber in WG 1
 kz1 = sqrt(k1.^2-kc1.^2); %kz inside port 1
 eta1 = 120*pi.*sqrt(self.waveguidePort1ur./self.waveguidePort1er); %wave impedance in WG 1
 
 k2 = k0.*sqrt(self.waveguidePort2er.*self.waveguidePort2ur); %k inside WG 2
-kc2 = self.mode_kc0./(sqrt(self.waveguidePort2er.*self.waveguidePort2ur)) %cutoff wavenumber in WG 2
+kc2 = self.mode_kc0./(sqrt(self.waveguidePort2er.*self.waveguidePort2ur)); %cutoff wavenumber in WG 2
 kz2 = sqrt(k2.^2-kc2.^2); %kz inside WG 2
 eta2 = 120*pi.*sqrt(self.waveguidePort2ur./self.waveguidePort2er); %wave impedance in WG 2
 
