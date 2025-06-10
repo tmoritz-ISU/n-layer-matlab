@@ -1,7 +1,34 @@
 function [Smn] = calculate(self,f,er,ur,thk)
-%UNTITLED3 Summary of this function goes here
-%   Detailed explanation goes here
-
+%Calculate Smn for a filled waveguide with specified TEmn or TMmn mode. 
+% Computes the S-parameter matrix (Smn) of a two port filled waveguide
+% filled with a single or multilayered structure defined by "er", "ur",
+% "thk", and at frequencies defined by "f". 
+%
+% Example Usage: 
+%   NL = nLayerFilledRectangular(modeIndexM, modeIndexN, ...
+%        waveguideBand="x");
+%   Smn = NL.calculate(f,er,ur,thk);
+%   Smn = NL.calculate(f, {er1,er2}, {}, {thk1,thk2});
+%   Smn = NL.calculate(f, {}, ur, thk);
+%
+%
+% Inputs:
+%   f - Array of frequencies. Must have compatible size with each layer of
+%       "er" and "ur", but this is not checked.
+%   er - Cell array of complex relative permittivities for each layer.
+%       Every element of the cell array corresponds to one layer of the
+%       structure, and each must be a compatible size to "f". For example,
+%       "er{n}" corresponds to the nth layer. Pass in {} to use the default
+%       value of 1.
+%   ur - Same as "er", except for complex relative permeability.
+%   thk - Same as "er" and "ur" but for the thicknesses of each layer.
+%       Obviously, the value of "thk" should not change with frequency, but
+%       this is not checked.
+%
+% Outputs:
+%   Smn - The computed mode S-parameter matrix.
+%
+% Author: Trent Moritz
 
 arguments
     self nLayerFilled
@@ -15,7 +42,7 @@ end
 [er, ur, thk] = nLayer.validateStructure(er, ur, thk, ...
     CheckStructureValues=self.checkStructureValues);
 
-%% Pre-compute Constants
+%% Constants Inside Each Waveguide
 k0 = 2*pi*f/self.speedOfLight
 k1 = k0.*sqrt(self.waveguidePort1er.*self.waveguidePort1ur); %k inside WG 1
 kc1 = self.mode_kc0./(sqrt(self.waveguidePort1er.*self.waveguidePort1ur)) %cutoff wavenumber in WG 1
@@ -27,6 +54,7 @@ kc2 = self.mode_kc0./(sqrt(self.waveguidePort2er.*self.waveguidePort2ur)) %cutof
 kz2 = sqrt(k2.^2-kc2.^2); %kz inside WG 2
 eta2 = 120*pi.*sqrt(self.waveguidePort2ur./self.waveguidePort2er); %wave impedance in WG 2
 
+%% Calcualte Constants Within MUT
 k = cell(size(thk));
 kz = cell(size(thk));
 eta = cell(size(thk));
@@ -47,6 +75,7 @@ for ii=1:length(thk)
     end
 end
 
+%% Add Interfaces Frome Waveguide Filling(s)
 if strcmp(self.modeType,"TE")
     Z = {k1.*eta1./kz1, Z{:}, k2.*eta2./kz2}.';
 end
@@ -54,6 +83,7 @@ if strcmp(self.modeType, "TM")
     Z = {kz1.*eta1./k1, Z{:}, kz2.*eta2./k2}.';
 end
 
+%% Compute Reflection Coefficients at each Interface
 for ii=1:length(Z)-1
     Gamma{ii} = (Z{ii+1}-Z{ii})./(Z{ii+1}+Z{ii});
 end
@@ -64,7 +94,6 @@ S12 = cell(size(Gamma));
 S21 = cell(size(Gamma));
 S22 = cell(size(Gamma));
 
-%% Initial Values
 S11{1} = Gamma{1};
 S12{1} = 1-Gamma{1};
 S21{1} = 1+Gamma{1};
@@ -81,6 +110,7 @@ for ii=1:length(thk)
         ./(1-Gamma{ii+1}.*Tau{ii}.^2.*S22{ii});
 end
 
+%% Get S-parameter Matrix 
 Smn = reshape([S11{end}, S12{end}, S21{end}, S22{end}], length(f), 2, 2);
 
 end
