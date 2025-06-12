@@ -39,6 +39,11 @@ classdef nLayerFilled < nLayerForward
         [outputLabels] = getOutputLabels(self);
     end
 
+    methods (Access=protected)
+        
+
+    end
+
     %% Class Constructor
     methods (Access=public)
         function self = nLayerFilled(mode_kc0, modeType, classProperties)
